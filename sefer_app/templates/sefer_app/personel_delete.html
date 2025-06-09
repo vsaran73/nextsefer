@@ -1,0 +1,53 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Personel Sil - {{ personel.PerAd }} {{ personel.PerSoyad }}{% endblock %}
+
+{% block page_title %}Personel Sil - {{ personel.PerAd }} {{ personel.PerSoyad }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5>Personel Silme İşlemi</h5>
+            <a href="{% url 'personel_detail' personel.id %}" class="btn btn-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> Detay Sayfasına Dön
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-danger text-white">
+        <h6 class="m-0 font-weight-bold">Silme Onayı</h6>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i> <strong>Uyarı:</strong> Bu personeli silmek istediğinize emin misiniz?
+        </div>
+        
+        <p>
+            <strong>Personel Adı:</strong> {{ personel.PerAd }} {{ personel.PerSoyad }}<br>
+            <strong>Departman:</strong> {{ personel.Departman|default:"Belirtilmemiş" }}<br>
+            <strong>Pozisyon:</strong> {{ personel.Pozisyon|default:"Belirtilmemiş" }}
+        </p>
+        
+        {% if has_related_records %}
+        <div class="alert alert-danger">
+            <i class="fas fa-ban"></i> <strong>Dikkat:</strong> Bu personele bağlı seferler bulunmaktadır. Silme işlemi bu kayıtları etkileyebilir.
+        </div>
+        {% endif %}
+        
+        <form method="post" action="{% url 'personel_delete' personel.id %}" class="mt-4">
+            {% csrf_token %}
+            <div class="d-flex justify-content-end">
+                <a href="{% url 'personel_detail' personel.id %}" class="btn btn-secondary btn-sm me-2">
+                    <i class="fas fa-times"></i> İptal
+                </a>
+                <button type="submit" name="confirm_delete" class="btn btn-danger btn-sm">
+                    <i class="fas fa-trash"></i> Personeli Sil
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %} 

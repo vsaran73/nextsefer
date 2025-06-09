@@ -1,0 +1,106 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{% if hareket %}Genel Kasa Hareketi Düzenle{% else %}Yeni Genel Kasa Hareketi{% endif %} - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <h1 class="mt-4">{% if hareket %}Genel Kasa Hareketi Düzenle{% else %}Yeni Genel Kasa Hareketi{% endif %}</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="{% url 'index' %}">Ana Sayfa</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'kasa_list' %}">Kasalar</a></li>
+        <li class="breadcrumb-item active">{% if hareket %}Hareketi Düzenle{% else %}Yeni Hareket{% endif %}</li>
+    </ol>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-money-bill-alt me-1"></i>
+            Kasa Hareketi Bilgileri
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                
+                {% if messages %}
+                <div class="mb-4">
+                    {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}">
+                        {{ message }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="kasa">Kasa:</label>
+                            <select name="kasa" id="kasa" class="form-control">
+                                <option value="">Kasa seçiniz</option>
+                                {% for kasa_item in kasalar %}
+                                <option value="{{ kasa_item.id }}" {% if hareket.kasa.id == kasa_item.id %}selected{% endif %}>
+                                    {{ kasa_item.kasa_adi }} ({{ kasa_item.para_birimi }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="hareket_tipi">Hareket Tipi:</label>
+                            <select name="hareket_tipi" id="hareket_tipi" class="form-control">
+                                <option value="Gelir" {% if hareket.hareket_tipi == 'Gelir' %}selected{% endif %}>Gelir</option>
+                                <option value="Gider" {% if hareket.hareket_tipi == 'Gider' %}selected{% endif %}>Gider</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="kategori">Kategori:</label>
+                            <input type="text" name="kategori" id="kategori" class="form-control" value="{{ hareket.kategori }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="tutar">Tutar:</label>
+                            <input type="number" step="0.01" name="tutar" id="tutar" class="form-control" value="{{ hareket.tutar }}">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="tarih">Tarih:</label>
+                            <input type="date" name="tarih" id="tarih" class="form-control" value="{{ hareket.tarih|date:'Y-m-d' }}" {% if not hareket %}value="{{ today|date:'Y-m-d' }}"{% endif %}>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="belge_no">Belge No:</label>
+                            <input type="text" name="belge_no" id="belge_no" class="form-control" value="{{ hareket.belge_no }}">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-3">
+                    <label for="aciklama">Açıklama:</label>
+                    <textarea name="aciklama" id="aciklama" class="form-control" rows="3">{{ hareket.aciklama }}</textarea>
+                </div>
+                
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i>
+                        {% if hareket %}Güncelle{% else %}Kaydet{% endif %}
+                    </button>
+                    <a href="javascript:history.back()" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> İptal
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

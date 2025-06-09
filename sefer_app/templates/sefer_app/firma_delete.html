@@ -1,0 +1,74 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Cari Sil - {{ firma.FirmaAdi }} - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block page_title %}Cari Sil - {{ firma.FirmaAdi }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Cari Sil: {{ firma.FirmaAdi }}</h1>
+        <a href="{% url 'firma_detail' firma.id %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Cari Detayına Dön
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6 mx-auto">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-danger">Cari Silme Onayı</h6>
+                </div>
+                <div class="card-body">
+                    {% if has_related_records %}
+                    <div class="alert alert-warning mb-4">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Uyarı:</strong> Bu cari, seferler veya faturalar ile ilişkilidir. Silme işlemi gerçekleştirilirse, ilişkili kayıtlar da etkilenebilir veya tutarsız hale gelebilir.
+                    </div>
+                    {% endif %}
+                    
+                    <p class="mb-4">
+                        <strong>"{{ firma.FirmaAdi }}"</strong> adlı cariyi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+                    </p>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card bg-light p-3">
+                                <div class="text-xs font-weight-bold text-uppercase mb-1">
+                                    Cari Tipi
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                    {{ firma.FirmaTipi }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light p-3">
+                                <div class="text-xs font-weight-bold text-uppercase mb-1">
+                                    Yetkili Kişi
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                    {{ firma.YetkiliKisi|default:"Belirtilmemiş" }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="d-grid gap-2">
+                            <button type="submit" name="confirm_delete" class="btn btn-danger btn-lg">
+                                <i class="fas fa-trash fa-sm me-1"></i> Evet, Cariyi Sil
+                            </button>
+                            <a href="{% url 'firma_detail' firma.id %}" class="btn btn-secondary">
+                                İptal
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

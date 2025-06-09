@@ -1,0 +1,106 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextLogistic - Giriş</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(120deg, #4e73df 0%, #1cc88a 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            max-width: 420px;
+            margin: auto;
+            border-radius: 12px;
+            box-shadow: 0 0.5rem 2rem rgba(0,0,0,0.15);
+            background: #fff;
+            padding: 2.5rem 2rem 2rem 2rem;
+        }
+        .login-logo {
+            font-size: 2.2rem;
+            font-weight: bold;
+            color: #4e73df;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+        .login-logo i {
+            color: #1cc88a;
+            margin-right: 8px;
+        }
+        .login-title {
+            font-size: 1.2rem;
+            color: #222;
+            margin-bottom: 1.5rem;
+        }
+        .form-control {
+            border-radius: 0.5rem;
+            font-size: 1.1rem;
+            padding: 0.75rem 1rem;
+        }
+        .btn-primary {
+            background: #4e73df;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1.1rem;
+            padding: 0.75rem 1rem;
+        }
+        .btn-primary:hover {
+            background: #2653d4;
+        }
+        .login-footer {
+            color: #888;
+            font-size: 0.95rem;
+            margin-top: 2rem;
+            text-align: center;
+        }
+        .login-card .alert {
+            font-size: 1rem;
+            padding: 0.75rem 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="text-center mb-4">
+            <div class="login-logo">
+                <i class="fas fa-truck-moving"></i> Next<span style="color:#1cc88a;">Logistic</span>
+            </div>
+            <div class="login-title">Lojistik Yönetim Sistemi Giriş</div>
+        </div>
+        {% if error %}
+        <div class="alert alert-danger text-center">
+            {{ error }}
+        </div>
+        {% endif %}
+        <form method="post" autocomplete="off">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="username" class="form-label">Kullanıcı Adı</label>
+                <input type="text" class="form-control" id="username" name="username" placeholder="Kullanıcı Adı" required autofocus>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">Şifre</label>
+                <input type="password" class="form-control" id="password" name="password" placeholder="Şifre" required>
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                <label class="form-check-label" for="remember">Beni Hatırla</label>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Giriş Yap</button>
+        </form>
+        <div class="login-footer">
+            NextLogistic &copy; 2025<br>
+            <span style="font-size:0.95em;">v1.0 - Tüm hakları saklıdır.</span>
+        </div>
+    </div>
+</body>
+</html> 
+ 
+ 

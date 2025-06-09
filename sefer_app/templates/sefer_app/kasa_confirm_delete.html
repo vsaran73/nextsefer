@@ -1,0 +1,74 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Kasa Sil - {{ kasa.kasa_adi }}{% endblock %}
+
+{% block page_title %}Kasa Silme Onayı{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-6 mx-auto">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Kasa Silme Onayı</h6>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger">
+                        <h5 class="alert-heading">Dikkat!</h5>
+                        <p>
+                            "<strong>{{ kasa.kasa_adi }}</strong>" kasasını silmek üzeresiniz. 
+                            Bu işlem geri alınamaz ve tüm kasa verileri silinecektir.
+                        </p>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <p><strong>Kasa Adı:</strong> {{ kasa.kasa_adi }}</p>
+                            <p><strong>Kasa Tipi:</strong> {{ kasa.kasa_tipi|default:"Belirtilmemiş" }}</p>
+                            <p><strong>Para Birimi:</strong> {{ kasa.para_birimi|default:"EUR" }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Açılış Bakiyesi:</strong> {{ kasa.baslangic_bakiyesi }} {{ kasa.para_birimi }}</p>
+                            <p><strong>Güncel Bakiye:</strong> {% if guncel_bakiye %}{{ guncel_bakiye }} {{ kasa.para_birimi }}{% else %}{{ kasa.baslangic_bakiyesi }} {{ kasa.para_birimi }}{% endif %}</p>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    {% if hareket_sayisi > 0 %}
+                    <div class="alert alert-warning">
+                        <h5 class="alert-heading">İlişkili Kayıtlar!</h5>
+                        <p><strong>{{ hareket_sayisi }}</strong> adet kasa hareketi kaydı bulunmaktadır.</p>
+                        <p>Bu kayıtların bulunduğu kasayı silemezsiniz. Önce kasa hareketlerini başka bir kasaya aktarın veya silin.</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'kasa_detail' kasa.id %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left fa-sm"></i> İptal
+                        </a>
+                        
+                        <div>
+                            <form method="post" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger" {% if hareket_sayisi > 0 %}disabled{% endif %}>
+                                    <i class="fas fa-trash fa-sm"></i> Kasayı Sil
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    {% if debug_info %}
+                    <div class="mt-4">
+                        <h5 class="text-primary">Hata Ayıklama Bilgileri:</h5>
+                        <div class="bg-light p-3 rounded">
+                            <pre>{{ debug_info|pprint }}</pre>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

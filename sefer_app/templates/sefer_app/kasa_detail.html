@@ -1,0 +1,603 @@
+{% extends 'sefer_app/base.html' %}
+{% load custom_filters %}
+
+{% block title %}{{ kasa.kasa_adi }} Detayları{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Heading -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">{{ kasa.kasa_adi }} Detayları</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'index' %}">Ana Sayfa</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'kasa_list' %}">Kasalar</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ kasa.kasa_adi }}</li>
+            </ol>
+        </nav>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Başlangıç Bakiye</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {% if kasa.para_birimi == 'EUR' %}
+                                    {{ kasa.baslangic_bakiyesi|floatformat:2 }} €
+                                {% elif kasa.para_birimi == 'USD' %}
+                                    {{ kasa.baslangic_bakiyesi|floatformat:2 }} $
+                                {% elif kasa.para_birimi == 'TRY' %}
+                                    {{ kasa.baslangic_bakiyesi|floatformat:2 }} ₺
+                                {% elif kasa.para_birimi == 'GBP' %}
+                                    {{ kasa.baslangic_bakiyesi|floatformat:2 }} £
+                                {% else %}
+                                    {{ kasa.baslangic_bakiyesi|floatformat:2 }} {{ kasa.para_birimi }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-coins fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Toplam Gelir</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {% if kasa.para_birimi == 'EUR' %}
+                                    {{ toplam_gelir|floatformat:2 }} €
+                                {% elif kasa.para_birimi == 'USD' %}
+                                    {{ toplam_gelir|floatformat:2 }} $
+                                {% elif kasa.para_birimi == 'TRY' %}
+                                    {{ toplam_gelir|floatformat:2 }} ₺
+                                {% elif kasa.para_birimi == 'GBP' %}
+                                    {{ toplam_gelir|floatformat:2 }} £
+                                {% else %}
+                                    {{ toplam_gelir|floatformat:2 }} {{ kasa.para_birimi }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-arrow-up fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Toplam Gider</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {% if kasa.para_birimi == 'EUR' %}
+                                    {{ toplam_gider|floatformat:2 }} €
+                                {% elif kasa.para_birimi == 'USD' %}
+                                    {{ toplam_gider|floatformat:2 }} $
+                                {% elif kasa.para_birimi == 'TRY' %}
+                                    {{ toplam_gider|floatformat:2 }} ₺
+                                {% elif kasa.para_birimi == 'GBP' %}
+                                    {{ toplam_gider|floatformat:2 }} £
+                                {% else %}
+                                    {{ toplam_gider|floatformat:2 }} {{ kasa.para_birimi }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-arrow-down fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Güncel Bakiye</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {% if kasa.para_birimi == 'EUR' %}
+                                    {{ guncel_bakiye|floatformat:2 }} €
+                                {% elif kasa.para_birimi == 'USD' %}
+                                    {{ guncel_bakiye|floatformat:2 }} $
+                                {% elif kasa.para_birimi == 'TRY' %}
+                                    {{ guncel_bakiye|floatformat:2 }} ₺
+                                {% elif kasa.para_birimi == 'GBP' %}
+                                    {{ guncel_bakiye|floatformat:2 }} £
+                                {% else %}
+                                    {{ guncel_bakiye|floatformat:2 }} {{ kasa.para_birimi }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-wallet fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kasa Bilgileri ve Hareketler -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+            <h6 class="m-0 font-weight-bold text-primary">Kasa Bilgileri</h6>
+            <div>
+                <a href="{% url 'kasa_update' kasa.id %}" class="btn btn-sm btn-warning shadow-sm">
+                    <i class="fas fa-edit fa-sm text-white-50 me-1"></i> Düzenle
+                </a>
+                <a href="{% url 'kasa_delete' kasa.id %}" class="btn btn-sm btn-danger shadow-sm">
+                    <i class="fas fa-trash fa-sm text-white-50 me-1"></i> Sil
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <p><strong>Kasa Adı:</strong> {{ kasa.kasa_adi }}</p>
+                    <p><strong>Kasa Tipi:</strong> {{ kasa.kasa_tipi }}</p>
+                    <p><strong>Para Birimi:</strong> 
+                        {% if kasa.para_birimi == 'EUR' %}
+                            Euro (€)
+                        {% elif kasa.para_birimi == 'USD' %}
+                            Dolar ($)
+                        {% elif kasa.para_birimi == 'TRY' %}
+                            Türk Lirası (₺)
+                        {% elif kasa.para_birimi == 'GBP' %}
+                            İngiliz Sterlini (£)
+                        {% else %}
+                            {{ kasa.para_birimi }}
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Başlangıç Bakiyesi:</strong> 
+                        {% if kasa.para_birimi == 'EUR' %}
+                            {{ kasa.baslangic_bakiyesi|floatformat:2 }} €
+                        {% elif kasa.para_birimi == 'USD' %}
+                            {{ kasa.baslangic_bakiyesi|floatformat:2 }} $
+                        {% elif kasa.para_birimi == 'TRY' %}
+                            {{ kasa.baslangic_bakiyesi|floatformat:2 }} ₺
+                        {% elif kasa.para_birimi == 'GBP' %}
+                            {{ kasa.baslangic_bakiyesi|floatformat:2 }} £
+                        {% else %}
+                            {{ kasa.baslangic_bakiyesi|floatformat:2 }} {{ kasa.para_birimi }}
+                        {% endif %}
+                    </p>
+                    <p><strong>Güncel Bakiye:</strong> 
+                        {% if kasa.para_birimi == 'EUR' %}
+                            {{ guncel_bakiye|floatformat:2 }} €
+                        {% elif kasa.para_birimi == 'USD' %}
+                            {{ guncel_bakiye|floatformat:2 }} $
+                        {% elif kasa.para_birimi == 'TRY' %}
+                            {{ guncel_bakiye|floatformat:2 }} ₺
+                        {% elif kasa.para_birimi == 'GBP' %}
+                            {{ guncel_bakiye|floatformat:2 }} £
+                        {% else %}
+                            {{ guncel_bakiye|floatformat:2 }} {{ kasa.para_birimi }}
+                        {% endif %}
+                    </p>
+                    <p><strong>Açıklama:</strong> {{ kasa.aciklama|default:"-" }}</p>
+                </div>
+            </div>
+            <hr>
+            <h6 class="m-0 font-weight-bold text-primary mb-3">Kasa Hareket Listesi</h6>
+            <!-- Filtreler -->
+            <form method="get" action="" class="mb-4">
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label for="tarih_baslangic">Başlangıç Tarihi</label>
+                        <input type="date" id="tarih_baslangic" name="tarih_baslangic" class="form-control" value="{{ tarih_baslangic }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="tarih_bitis">Bitiş Tarihi</label>
+                        <input type="date" id="tarih_bitis" name="tarih_bitis" class="form-control" value="{{ tarih_bitis }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="hareket_tipi">Hareket Tipi</label>
+                        <select id="hareket_tipi" name="hareket_tipi" class="form-control">
+                            <option value="">Tümü</option>
+                            <option value="Gelir" {% if hareket_tipi == "Gelir" %}selected{% endif %}>Gelir</option>
+                            <option value="Gider" {% if hareket_tipi == "Gider" %}selected{% endif %}>Gider</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="arama">Arama</label>
+                        <input type="text" id="arama" name="arama" class="form-control" placeholder="Açıklama, belge no..." value="{{ arama }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 text-right">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-filter fa-sm me-1"></i> Filtrele
+                        </button>
+                        <a href="{% url 'kasa_detail' kasa.id %}" class="btn btn-secondary">
+                            <i class="fas fa-undo fa-sm me-1"></i> Temizle
+                        </a>
+                        
+                        <!-- Rapor/yazdırma butonları -->
+                        <div class="btn-group ms-2">
+                            <button type="button" class="btn btn-outline-primary dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-file-export"></i> Rapor
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-right">
+                                <a class="dropdown-item" href="{% url 'kasa_detail_pdf' kasa.id %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" target="_blank">
+                                    <i class="fas fa-file-pdf"></i> PDF İndir
+                                </a>
+                                <a class="dropdown-item" href="javascript:window.print()">
+                                    <i class="fas fa-print"></i> Yazdır
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+            
+            <!-- Para Ekleme Butonu -->
+            <div class="mb-4">
+                <a href="{% url 'genel_hareket_create' %}?kasa={{ kasa.id }}" class="btn btn-success">
+                    <i class="fas fa-plus-circle me-1"></i> Para Ekle/Çıkar
+                </a>
+            </div>
+
+            <!-- Kasa Hareketleri Tablosu -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Kasa Hareketleri</h6>
+                    <div>
+                        <a href="{% url 'kasa_detail_pdf' kasa.id %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-sm btn-outline-danger" target="_blank">
+                            <i class="fas fa-file-pdf fa-sm"></i> PDF
+                        </a>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+                            <i class="fas fa-print fa-sm"></i> Yazdır
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover" id="hareketlerTable" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Belge No</th>
+                                    <th>Açıklama</th>
+                                    <th>Kaynak</th>
+                                    <th>Tür</th>
+                                    <th class="text-end">Giriş</th>
+                                    <th class="text-end">Çıkış</th>
+                                    <th class="text-center no-print">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if hareketler %}
+                                    {% for hareket in hareketler %}
+                                    <tr {% if hareket.hareket_tipi == 'Gelir' %}class="row-gelir"{% else %}class="row-gider"{% endif %}>
+                                        <td>
+                                            {% if hareket.tarih.hour|default:None != None %}
+                                                {{ hareket.tarih|date:"d.m.Y H:i" }}
+                                            {% else %}
+                                                {{ hareket.tarih|date:"d.m.Y" }}
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ hareket.belge_no|default:"-" }}</td>
+                                        <td>
+                                            {% if hareket.link %}
+                                                <a href="{{ hareket.link }}" class="fw-bold text-primary">
+                                                    {{ hareket.aciklama }}
+                                                    {% if hareket.kaynak == 'Sefer Masrafı' and hareket.original_tutar and hareket.original_para_birimi %}
+                                                        ({{ hareket.original_tutar|format_number }} {{ hareket.original_para_birimi|currency_symbol }})
+                                                    {% endif %}
+                                                </a>
+                                            {% else %}
+                                                <span class="fw-medium">
+                                                    {{ hareket.aciklama }}
+                                                    {% if hareket.kaynak == 'Sefer Masrafı' and hareket.original_tutar and hareket.original_para_birimi %}
+                                                        ({{ hareket.original_tutar|format_number }} {{ hareket.original_para_birimi|currency_symbol }})
+                                                    {% endif %}
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ hareket.kaynak }}</td>
+                                        <td>
+                                            {% if hareket.hareket_tipi == 'Gider' and hareket.gider_turu %}
+                                                {% if hareket.kaynak == 'Personel Ödemesi' %}
+                                                    {{ hareket.gider_turu }}
+                                                {% elif hareket.kaynak == 'Genel Hareket' %}
+                                                    {{ hareket.get_gider_turu_display }}
+                                                {% elif hareket.kaynak == 'Sefer Masrafı' %}
+                                                    {{ hareket.gider_turu }}
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end">
+                                            {% if hareket.hareket_tipi == 'Gelir' %}
+                                                <span class="gelir-amount fw-bold">
+                                                    {{ hareket.tutar|format_number }} {{ kasa.para_birimi|currency_symbol }}
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end">
+                                            {% if hareket.hareket_tipi == 'Gider' %}
+                                                <span class="gider-amount fw-bold">
+                                                    {{ hareket.tutar|format_number }} {{ kasa.para_birimi|currency_symbol }}
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center no-print">
+                                            {% if hareket.kaynak == 'Genel Hareket' %}
+                                                <div class="btn-group">
+                                                    <a href="{% url 'genel_hareket_update' hareket.id %}" class="btn btn-sm btn-info">
+                                                        <i class="fas fa-edit"></i>
+                                                    </a>
+                                                    <form action="{% url 'genel_hareket_delete' hareket.id %}" method="post" class="d-inline">
+                                                        {% csrf_token %}
+                                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Bu kaydı silmek istediğinizden emin misiniz?')">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="9" class="text-center py-4">
+                                            <div class="alert alert-info mb-0">
+                                                <i class="fas fa-info-circle me-2"></i> Kayıtlı hareket bulunamadı.
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                #hareketlerTable {
+                    border: 1px solid #e3e6f0;
+                    border-radius: 0.35rem;
+                    overflow: hidden;
+                    font-size: 0.85rem;
+                }
+                
+                #hareketlerTable thead th {
+                    background-color: #f8f9fc;
+                    border-bottom: 2px solid #e3e6f0;
+                    padding: 10px;
+                    font-size: 0.75rem;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    font-weight: 600;
+                    color: #4e73df;
+                }
+                
+                #hareketlerTable tbody td {
+                    padding: 8px;
+                    vertical-align: middle;
+                    border-bottom: 1px solid #e3e6f0;
+                }
+                
+                .row-gelir td {
+                    background-color: rgba(28, 200, 138, 0.05);
+                }
+                
+                .row-gider td {
+                    background-color: rgba(231, 74, 59, 0.05);
+                }
+                
+                .badge {
+                    font-weight: 500;
+                    padding: 0.35rem 0.5rem;
+                    font-size: 0.75rem;
+                    border-radius: 0.25rem;
+                }
+                
+                .gelir-amount {
+                    color: #006400;
+                    font-weight: 700;
+                }
+                
+                .gider-amount {
+                    color: #800020;
+                    font-weight: 700;
+                }
+            </style>
+
+            <!-- Pagination/Sayfalama -->
+            {% if hareketler.paginator.num_pages > 1 %}
+                <nav aria-label="Sayfalama" class="no-print">
+                    <ul class="pagination justify-content-center mt-4">
+                        {% if hareketler.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">İlk</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ hareketler.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Önceki</a>
+                            </li>
+                        {% endif %}
+
+                        {% for num in hareketler.paginator.page_range %}
+                            {% if hareketler.number == num %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ num }}</span>
+                                </li>
+                            {% elif num > hareketler.number|add:"-3" and num < hareketler.number|add:"3" %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if hareketler.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ hareketler.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Sonraki</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ hareketler.paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Son</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Yazdırma için CSS -->
+<style media="print">
+    @page {
+        size: portrait;
+        margin: 1cm;
+    }
+    
+    body {
+        font-family: Arial, sans-serif;
+    }
+    
+    .no-print {
+        display: none !important;
+    }
+    
+    .container-fluid {
+        width: 100%;
+        padding: 0;
+    }
+    
+    .card {
+        border: 1px solid #ddd;
+        margin-bottom: 20px;
+        break-inside: avoid;
+    }
+    
+    .card-header {
+        background-color: #f5f5f5 !important;
+        color: #000 !important;
+        font-weight: bold;
+        padding: 10px;
+    }
+    
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .table th, .table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+    }
+    
+    .pagination, .breadcrumb, nav, .btn, form button, .sidebar, .topnav {
+        display: none !important;
+    }
+    
+    .print-header {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    
+    .print-footer {
+        text-align: center;
+        margin-top: 20px;
+        font-size: 12px;
+    }
+    
+    /* Sayfa sonu kontrolü */
+    .page-break {
+        page-break-after: always;
+    }
+    
+    /* Yazdırma sırasında gösterilecek içerik */
+    .print-only {
+        display: block !important;
+    }
+    
+    .text-success {
+        color: #28a745 !important;
+    }
+    
+    .text-danger {
+        color: #dc3545 !important;
+    }
+    
+    .text-primary {
+        color: #007bff !important;
+    }
+</style>
+
+<style>
+.print-only {
+    display: none;
+}
+</style>
+
+<!-- Yazdırma Sırasında Görünecek Başlık -->
+<div class="print-only print-header">
+    <h1>{{ kasa.kasa_adi }} - Kasa Raporu</h1>
+    <p>
+        {% if request.GET.tarih_baslangic and request.GET.tarih_bitis %}
+            {{ request.GET.tarih_baslangic }} - {{ request.GET.tarih_bitis }} Dönemi
+        {% else %}
+            Tüm Dönemler
+        {% endif %}
+    </p>
+    <p>Rapor Tarihi: {% now "d.m.Y" %}</p>
+</div>
+
+<!-- Yazdırma Sırasında Görünecek Altbilgi -->
+<div class="print-only print-footer">
+    <p>© {% now "Y" %} NextSefer - Kasa Raporu</p>
+    <p>Sayfa: <span class="pageNumber"></span> / <span class="totalPages"></span></p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+<script>
+    $(document).ready(function() {
+        // DataTable başlatma
+        var table = $('#hareketlerTable').DataTable({
+            language: {
+                url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/tr.json"
+            },
+            order: [[0, 'desc']], // Tarihe göre sırala (en yeni üstte)
+            pageLength: 25,
+            responsive: true
+        });
+        
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: "tr",
+            allowInput: true
+        });
+        
+        // Filter açılışı kontrolü
+        {% if request.GET.tarih_baslangic or request.GET.tarih_bitis or request.GET.hareket_tipi or request.GET.arama %}
+        // Eğer filtreler varsa filtre panelini aç
+        $('#filterCollapse').addClass('show');
+        {% endif %}
+    });
+</script>
+{% endblock %} 

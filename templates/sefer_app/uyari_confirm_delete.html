@@ -1,0 +1,92 @@
+{% extends 'sefer_app/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Uyarı Sil - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block page_title %}Uyarı Sil{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Uyarı Sil</h1>
+        <a href="{% url 'uyari_list' %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Uyarı Listesine Dön
+        </a>
+    </div>
+
+    <!-- Silme Onay Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-danger">Silme Onayı</h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <h5>Dikkat!</h5>
+                <p>Aşağıdaki uyarıyı silmek üzeresiniz. Bu işlem geri alınamaz.</p>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="font-weight-bold text-primary mb-0">Uyarı Bilgileri</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Araç:</strong> {{ uyari.arac.plaka }} - {{ uyari.arac.marka }} {{ uyari.arac.model }}</p>
+                            <p><strong>Uyarı Türü:</strong> {{ uyari.uyari_turu }}</p>
+                            <p><strong>Öncelik:</strong> {{ uyari.oncelik }}</p>
+                            <p><strong>Durum:</strong> 
+                                <span class="badge bg-{{ uyari.durum_rengi }}">{{ uyari.durum }}</span>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Oluşturma Tarihi:</strong> {{ uyari.olusturma_tarihi|date:"d.m.Y" }}</p>
+                            {% if uyari.son_tarih %}
+                            <p><strong>Son Tarih:</strong> {{ uyari.son_tarih|date:"d.m.Y" }}</p>
+                            {% if uyari.kalan_gun is not None %}
+                            <p><strong>Kalan Gün:</strong> 
+                                {% if uyari.kalan_gun < 0 %}
+                                    <span class="text-danger">{{ uyari.kalan_gun|abs_value }} gün gecikmiş</span>
+                                {% elif uyari.kalan_gun == 0 %}
+                                    <span class="text-warning">Bugün</span>
+                                {% else %}
+                                    <span class="text-success">{{ uyari.kalan_gun }} gün kaldı</span>
+                                {% endif %}
+                            </p>
+                            {% endif %}
+                            {% endif %}
+                            {% if uyari.tamamlanma_tarihi %}
+                            <p><strong>Tamamlanma Tarihi:</strong> {{ uyari.tamamlanma_tarihi|date:"d.m.Y" }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="mt-3">
+                        <h6><strong>Uyarı Mesajı:</strong></h6>
+                        <div class="alert alert-light">
+                            {{ uyari.uyari_mesaji }}
+                        </div>
+                        {% if uyari.notlar %}
+                        <h6><strong>Notlar:</strong></h6>
+                        <div class="alert alert-light">
+                            {{ uyari.notlar }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'uyari_list' %}" class="btn btn-secondary">İptal</a>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash fa-sm text-white-50 me-1"></i> Uyarıyı Sil
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ firma.FirmaAdi }} - Cari Bilgisi</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 1.5cm;
+        }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 12pt;
+            line-height: 1.5;
+            color: #333;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #333;
+        }
+        .logo {
+            font-size: 22pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .title {
+            font-size: 16pt;
+            font-weight: bold;
+            margin: 20px 0 10px 0;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        th {
+            background-color: #f2f2f2;
+            text-align: left;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .info-item {
+            margin-bottom: 8px;
+        }
+        .label {
+            font-weight: bold;
+        }
+        .value {
+            margin-left: 5px;
+        }
+        .summary-box {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 15px;
+            background-color: #f9f9f9;
+        }
+        .financial {
+            font-weight: bold;
+        }
+        .credit {
+            color: green;
+        }
+        .debit {
+            color: red;
+        }
+        .balance {
+            color: #333;
+            font-size: 14pt;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            font-size: 10pt;
+            text-align: center;
+            color: #777;
+        }
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            a {
+                text-decoration: none;
+                color: #333;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Next Global Logistic S.R.L.</div>
+            <div class="document-title">Cari Hesap Ekstresi</div>
+        </div>
+
+        <div class="section">
+            <div class="title">Firma Bilgileri</div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="label">Firma Adı:</span>
+                    <span class="value">{{ firma.FirmaAdi }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Firma Tipi:</span>
+                    <span class="value">{{ firma.FirmaTipi }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Yetkili Kişi:</span>
+                    <span class="value">{{ firma.YetkiliKisi }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Vergi No:</span>
+                    <span class="value">{{ firma.VergiNumarasi }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Vergi Dairesi:</span>
+                    <span class="value">{{ firma.VergiDairesi }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Telefon:</span>
+                    <span class="value">{{ firma.Telefon }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="title">Finansal Özet</div>
+            <div class="summary-box">
+                <div class="info-grid">
+                    <div class="info-item financial">
+                        <span class="label">{% if firma.FirmaTipi == 'Tedarikçi' %}Toplam Alacak:{% else %}Toplam Borç:{% endif %}</span>
+                        <span class="value{% if firma.FirmaTipi == 'Tedarikçi' %} credit{% else %} debit{% endif %}">{{ borc_toplam|floatformat:2 }} €</span>
+                    </div>
+                    <div class="info-item financial">
+                        <span class="label">{% if firma.FirmaTipi == 'Tedarikçi' %}Toplam Ödeme:{% else %}Toplam Tahsilat:{% endif %}</span>
+                        <span class="value credit">{{ tahsilat_toplam|floatformat:2 }} €</span>
+                    </div>
+                    <div class="info-item financial">
+                        <span class="label">{% if firma.FirmaTipi == 'Tedarikçi' %}Cari Alacak:{% else %}Cari Borç:{% endif %}</span>
+                        <span class="value balance">{{ bakiye|floatformat:2 }} €</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Toplam Sefer Sayısı:</span>
+                        <span class="value">{{ sefer_sayisi }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Son İşlem Tarihi:</span>
+                        <span class="value">{{ son_islem_tarihi|date:"d.m.Y" }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="title">Son Faturalar</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fatura No</th>
+                        <th>Tarih</th>
+                        <th>Tür</th>
+                        <th>Tutar</th>
+                        <th>Ödenen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fatura in faturalar %}
+                    <tr>
+                        <td>{{ fatura.FaturaNo }}</td>
+                        <td>{{ fatura.FaturaTarihi|date:"d.m.Y" }}</td>
+                        <td>{{ fatura.FaturaTipi }}</td>
+                        <td>{{ fatura.ToplamTutar|floatformat:2 }} €</td>
+                        <td>{{ fatura.OdenenTutar|floatformat:2 }} €</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" style="text-align: center;">Fatura bulunamadı</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="title">Son Seferler</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sefer No</th>
+                        <th>Yükleme</th>
+                        <th>Boşaltma</th>
+                        <th>Durum</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sefer in seferler %}
+                    <tr>
+                        <td>{{ sefer.sefer_kodu }}</td>
+                        <td>{{ sefer.baslangic_sehri }}</td>
+                        <td>{{ sefer.bitis_sehri }}</td>
+                        <td>{{ sefer.durum }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" style="text-align: center;">Sefer bulunamadı</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>Bu belge {{ request.user.first_name }} {{ request.user.last_name }} tarafından {% now "d.m.Y" %} tarihinde oluşturulmuştur.</p>
+            <p>© {% now "Y" %} Next Global Logistic S.R.L. - Tüm hakları saklıdır.</p>
+        </div>
+    </div>
+</body>
+</html> 

@@ -1,0 +1,1295 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{% if sefer %}Sefer Düzenle{% else %}Yeni Sefer{% endif %} - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+        padding-left: 0;
+    }
+    
+    /* Özel yük cinsi stilendirmesi */
+    #yuk_cinsi + .select2-container .select2-selection--single {
+        height: 38px;
+    }
+    
+    #yuk_cinsi + .select2-container .select2-selection__rendered {
+        line-height: 24px;
+    }
+    
+    #map {
+        height: 450px;
+        width: 100%;
+        margin-bottom: 15px;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .map-container {
+        margin-bottom: 20px;
+        padding: 0;
+        position: relative;
+    }
+    
+    .map-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.05);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+        cursor: move;
+    }
+    
+    .map-overlay.visible {
+        pointer-events: auto;
+        opacity: 1;
+        animation: fadeIn 0.3s;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    .map-overlay .message {
+        background: rgba(255,255,255,0.9);
+        padding: 10px 15px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        font-weight: bold;
+        cursor: pointer;
+    }
+    
+    .route-info {
+        padding: 10px;
+        background-color: #f8f9fc;
+        border-radius: 0.35rem;
+        margin-top: 10px;
+    }
+    
+    .form-control {
+        font-size: 0.9rem;
+    }
+    
+    .select2-container {
+        width: 100% !important;
+    }
+    
+    /* Ülke bayraklı select2 stilleri */
+    .flag-icon {
+        margin-right: 6px;
+        display: inline-block;
+        width: 20px;
+    }
+    
+    .select2-results__option {
+        padding: 6px 12px;
+    }
+    
+    /* Country border highlight styles */
+    .country-border {
+        fill: none;
+        stroke: #4e73df;
+        stroke-width: 1.5;
+        stroke-opacity: 0.4;
+    }
+    
+    .country-border-highlight {
+        fill: none;
+        stroke: #f6c23e;
+        stroke-width: 3;
+        stroke-opacity: 0.7;
+        stroke-dasharray: 5, 5;
+        animation: border-flow 1s linear infinite;
+    }
+    
+    @keyframes border-flow {
+        to {
+            stroke-dashoffset: -10;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}{% if sefer %}Sefer Düzenle{% else %}Yeni Sefer{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">{% if sefer %}Sefer Düzenle{% else %}Yeni Sefer{% endif %}</h1>
+        <a href="{% if sefer %}{% url 'sefer_detail' sefer.id %}{% else %}{% url 'sefer_list' %}{% endif %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> {% if sefer %}Detay Sayfasına{% else %}Listeye{% endif %} Dön
+        </a>
+    </div>
+    
+    <!-- Required fields notice -->
+    <div class="alert alert-info mb-3">
+        <i class="fas fa-info-circle mr-1"></i> <span class="text-danger">*</span> işaretli alanlar zorunludur.
+    </div>
+    
+    <!-- Form Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Sefer Bilgileri</h6>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{% if sefer %}{% url 'sefer_update' sefer.id %}{% else %}{% url 'sefer_create' %}{% endif %}">
+                {% csrf_token %}
+                
+                {% if messages %}
+                <div class="alert alert-danger">
+                    {% for message in messages %}
+                    <p>{{ message }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="sefer_kodu">Sefer Kodu <span class="text-danger">*</span></label>
+                        <input type="text" id="sefer_kodu" name="sefer_kodu" class="form-control" 
+                               value="{% if sefer %}{{ sefer.sefer_kodu }}{% elif form_data.sefer_kodu %}{{ form_data.sefer_kodu }}{% else %}{{ default_sefer_kodu }}{% endif %}" required>
+                        <small class="form-text text-muted">Sefer kodu otomatik olarak oluşturulur (SEF-AAYY-XXXX formatında)</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="firma">Firma <span class="text-danger">*</span></label>
+                            <select id="firma" name="firma" class="form-control select2" required>
+                            <option value="">Seçiniz</option>
+                            {% for firma in firmalar %}
+                            <option value="{{ firma.id }}" 
+                                {% if sefer.firma.id == firma.id %}selected
+                                {% elif form_data.firma|default:'' == firma.id|stringformat:"s" %}selected{% endif %}>
+                                {{ firma.FirmaAdi }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="yuk_cinsi">Yük Cinsi <span class="text-danger">*</span></label>
+                            <select id="yuk_cinsi" name="yuk_cinsi" class="form-control select2" required>
+                                <option value="">Seçiniz</option>
+                                {% for cargo_type in cargo_types %}
+                                <option value="{{ cargo_type }}" 
+                                    {% if sefer and sefer.yuk_cinsi == cargo_type %}selected
+                                    {% elif not sefer and form_data.yuk_cinsi|default:'' == cargo_type %}selected{% endif %}>{{ cargo_type }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="arac">Araç <span class="text-danger">*</span></label>
+                            <select id="arac" name="arac" class="form-control select2" required>
+                            <option value="">Seçiniz</option>
+                            {% for arac in araclar %}
+                            <option value="{{ arac.id }}" 
+                                {% if sefer.arac.id == arac.id %}selected
+                                {% elif form_data.arac|default:'' == arac.id|stringformat:"s" %}selected{% endif %}>
+                                {{ arac.plaka }} - {{ arac.arac_tipi }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="personel">Sürücü <span class="text-danger">*</span></label>
+                            <select id="personel" name="personel" class="form-control select2" required>
+                            <option value="">Seçiniz</option>
+                            {% for personel in personeller %}
+                            <option value="{{ personel.id }}" 
+                                {% if sefer.personel.id == personel.id %}selected
+                                {% elif form_data.personel|default:'' == personel.id|stringformat:"s" %}selected{% endif %}>
+                                {{ personel.PerAd }} {{ personel.PerSoyad }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="durum">Durum <span class="text-danger">*</span></label>
+                            <select id="durum" name="durum" class="form-control" required>
+                            <option value="Aktif" 
+                                {% if sefer.durum == 'Aktif' or form_data.durum|default:'Aktif' == 'Aktif' or not sefer %}selected{% endif %}>
+                                Aktif
+                            </option>
+                            <option value="Tamamlandı" 
+                                {% if sefer.durum == 'Tamamlandı' or form_data.durum|default:'' == 'Tamamlandı' %}selected{% endif %}>
+                                Tamamlandı
+                            </option>
+                            <option value="İptal Edildi" 
+                                {% if sefer.durum == 'İptal Edildi' or form_data.durum|default:'' == 'İptal Edildi' %}selected{% endif %}>
+                                İptal Edildi
+                            </option>
+                        </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <label for="guzergah">Güzergah</label>
+                            <input type="text" id="guzergah" name="guzergah" class="form-control" 
+                                value="{% if sefer %}{{ sefer.guzergah }}{% else %}{{ form_data.guzergah|default:'' }}{% endif %}">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="baslangic_ulkesi">Başlangıç Ülkesi <span class="text-danger">*</span></label>
+                            <select id="baslangic_ulkesi" name="baslangic_ulkesi" class="form-control select2" required>
+                            <option value="">Seçiniz</option>
+                            {% for ulke in ulkeler %}
+                            <option value="{{ ulke.id }}" 
+                                {% if sefer.baslangic_ulkesi.id == ulke.id %}selected
+                                {% elif form_data.baslangic_ulkesi|default:'' == ulke.id|stringformat:"s" %}selected{% endif %}>
+                                {{ ulke.ulke_adi }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="baslangic_sehri">Başlangıç Şehri <span class="text-danger">*</span></label>
+                            <select id="baslangic_sehri" name="baslangic_sehri" class="form-control select2" required>
+                            <option value="">Seçiniz</option>
+                            {% for sehir in sehirler %}
+                            <option value="{{ sehir.id }}" 
+                                {% if sefer.baslangic_sehri.id == sehir.id %}selected
+                                {% elif form_data.baslangic_sehri|default:'' == sehir.id|stringformat:"s" %}selected{% endif %}>
+                                {{ sehir.sehir_adi }}, {{ sehir.ulke.ulke_adi }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="bitis_ulkesi">Bitiş Ülkesi <span class="text-danger">*</span></label>
+                            <select id="bitis_ulkesi" name="bitis_ulkesi" class="form-control select2" required>
+                            <option value="">Seçiniz</option>
+                            {% for ulke in ulkeler %}
+                            <option value="{{ ulke.id }}" 
+                                {% if sefer.bitis_ulkesi.id == ulke.id %}selected
+                                {% elif form_data.bitis_ulkesi|default:'' == ulke.id|stringformat:"s" %}selected{% endif %}>
+                                {{ ulke.ulke_adi }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="bitis_sehri">Bitiş Şehri <span class="text-danger">*</span></label>
+                            <select id="bitis_sehri" name="bitis_sehri" class="form-control select2" required>
+                            <option value="">Seçiniz</option>
+                            {% for sehir in sehirler %}
+                            <option value="{{ sehir.id }}" 
+                                {% if sefer.bitis_sehri.id == sehir.id %}selected
+                                {% elif form_data.bitis_sehri|default:'' == sehir.id|stringformat:"s" %}selected{% endif %}>
+                                {{ sehir.sehir_adi }}, {{ sehir.ulke.ulke_adi }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="m-0 font-weight-bold text-primary">
+                            <a data-toggle="collapse" href="#mapCollapse" role="button" aria-expanded="true" aria-controls="mapCollapse">
+                                <i class="fas fa-map-marked-alt mr-1"></i> Rota ve Mesafe Hesaplama <i class="fas fa-chevron-down fa-xs float-right"></i>
+                            </a>
+                        </h6>
+                    </div>
+                    <div class="collapse show" id="mapCollapse">
+                        <div class="card-body map-container">
+                            <div id="map"></div>
+                            <div class="route-info mt-3" id="route-info" style="display:none;">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <strong>Toplam Mesafe:</strong> <span id="total-distance"></span> km
+                                    </div>
+                                    <div class="col-md-4">
+                                        <strong>Tahmini Süre:</strong> <span id="total-duration"></span> saat
+                                    </div>
+                                    <div class="col-md-4">
+                                        <strong>Tahmini Seyahat Günü:</strong> <span id="total-days"></span> gün
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="cikis_tarihi">Çıkış Tarihi <span class="text-danger">*</span></label>
+                            <input type="text" id="cikis_tarihi" name="cikis_tarihi" class="form-control datepicker" 
+                                value="{% if sefer %}{{ sefer.cikis_tarihi|date:'Y-m-d H:i' }}{% else %}{{ form_data.cikis_tarihi|default:'' }}{% endif %}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="tahmini_varis_tarihi">Tahmini Varış Tarihi <span class="text-danger">*</span></label>
+                            <input type="text" id="tahmini_varis_tarihi" name="tahmini_varis_tarihi" class="form-control datepicker" required
+                                value="{% if sefer %}{{ sefer.tahmini_varis_tarihi|date:'Y-m-d H:i' }}{% else %}{{ form_data.tahmini_varis_tarihi|default:'' }}{% endif %}">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="ucret">Ücret (EUR)</label>
+                            <input type="number" step="0.01" id="ucret" name="ucret" class="form-control" 
+                               value="{% if sefer %}{{ sefer.ucret }}{% else %}{{ form_data.ucret|default:'' }}{% endif %}" readonly>
+                            <small class="form-text text-muted">Ücret faturalandırılınca otomatik eklenecektir</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="baslangic_km">Başlangıç KM</label>
+                            <input type="number" id="baslangic_km" name="baslangic_km" class="form-control" 
+                               value="{% if sefer %}{{ sefer.baslangic_km }}{% else %}{{ form_data.baslangic_km|default:'' }}{% endif %}">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="bitis_km">Bitiş KM</label>
+                            <input type="number" id="bitis_km" name="bitis_km" class="form-control" 
+                               value="{% if sefer %}{{ sefer.bitis_km }}{% else %}{{ form_data.bitis_km|default:'' }}{% endif %}">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="mesafe">Mesafe (km)</label>
+                        <input type="number" step="0.01" name="mesafe" id="mesafe" class="form-control" readonly
+                               value="{% if sefer %}{{ sefer.mesafe }}{% else %}{{ form_data.mesafe|default:'' }}{% endif %}">
+                        <small class="form-text text-muted">Mesafe otomatik hesaplanacaktır</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4 d-flex justify-content-between">
+                    <a href="{% if sefer %}{% url 'sefer_detail' sefer.id %}{% else %}{% url 'sefer_list' %}{% endif %}" class="btn btn-secondary">
+                        <i class="fas fa-times fa-sm"></i> İptal
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save fa-sm text-white-50 me-1"></i> 
+                        {% if sefer %}Güncelle{% else %}Kaydet{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Sayfanın düzenleme modu için değişken -->
+<input type="hidden" id="is_edit_mode" value="{% if sefer %}true{% else %}false{% endif %}">
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    $(document).ready(function() {
+        // Ülke bayrak kodları - ISO 2 harf kodlarına göre
+        var ulkeBayrakKodlari = {
+            'Türkiye': 'TR',
+            'Almanya': 'DE',
+            'Avusturya': 'AT',
+            'Belçika': 'BE',
+            'Çek Cumhuriyeti': 'CZ',
+            'Danimarka': 'DK',
+            'Estonya': 'EE',
+            'Finlandiya': 'FI',
+            'Fransa': 'FR',
+            'Hollanda': 'NL',
+            'İspanya': 'ES',
+            'İsveç': 'SE',
+            'İsviçre': 'CH',
+            'İtalya': 'IT',
+            'İzlanda': 'IS',
+            'Letonya': 'LV',
+            'Lihtenştayn': 'LI',
+            'Litvanya': 'LT',
+            'Lüksemburg': 'LU',
+            'Macaristan': 'HU',
+            'Malta': 'MT',
+            'Norveç': 'NO',
+            'Polonya': 'PL',
+            'Portekiz': 'PT',
+            'Slovakya': 'SK',
+            'Slovenya': 'SI',
+            'Yunanistan': 'GR',
+            'Hırvatistan': 'HR',
+            'Kıbrıs': 'CY',
+            'Romanya': 'RO',
+            'Bulgaristan': 'BG'
+        };
+        
+        // Select2 için bayraklı formatlar
+        function formatUlke(ulke) {
+            if (!ulke.id) return ulke.text;
+            
+            var ulkeAdi = ulke.text.trim();
+            var ulkeKodu = ulkeBayrakKodlari[ulkeAdi] || '';
+            
+            if (ulkeKodu) {
+                // Unicode bayrak emojisini oluştur
+                // Ülke kodu harflerini Unicode kod noktalarına dönüştür
+                var bayrak = ulkeKodu
+                    .toUpperCase()
+                    .split('')
+                    .map(char => 127397 + char.charCodeAt(0))
+                    .map(code => String.fromCodePoint(code))
+                    .join('');
+                
+                return $('<span><span class="flag-icon">' + bayrak + '</span> ' + ulkeAdi + '</span>');
+            }
+            
+            return ulke.text;
+        }
+        
+        // Türkiye'yi üste taşı - Sayfa yüklendiğinde
+        function moveTurkeyToTop(selectId) {
+            var $select = $('#' + selectId);
+            var $turkiye = $select.find('option:contains("Türkiye")');
+            
+            if ($turkiye.length) {
+                var turkiyeId = $turkiye.val();
+                var turkiyeText = $turkiye.text();
+                
+                // Türkiye'yi kaldır
+                $turkiye.remove();
+                
+                // Türkiye'yi başa ekle
+                var $emptyOption = $select.find('option[value=""]');
+                if ($emptyOption.length) {
+                    $emptyOption.after('<option value="' + turkiyeId + '">' + turkiyeText + '</option>');
+                } else {
+                    $select.prepend('<option value="' + turkiyeId + '">' + turkiyeText + '</option>');
+                }
+            }
+        }
+    
+    // Function to check if route selections are complete and open map
+    function checkRouteSelectionsAndOpenMap() {
+        var baslangicUlkesi = $('#baslangic_ulkesi').val();
+        var baslangicSehri = $('#baslangic_sehri').val();
+        var bitisUlkesi = $('#bitis_ulkesi').val();
+        var bitisSehri = $('#bitis_sehri').val();
+        
+        if (baslangicUlkesi && baslangicSehri && bitisUlkesi && bitisSehri) {
+            // All selections are made, open the map section
+            $('#mapCollapse').collapse('show');
+            
+            // Make sure map is properly sized after being shown
+            setTimeout(function() {
+                if (map) {
+                    map.invalidateSize();
+                } else {
+                    waitForMapVisibility();
+                }
+            }, 500);
+        }
+    }
+        
+        // Select2 için başlangıç yapılandırması
+        $('.select2').select2({
+            width: '100%',
+            templateResult: function(data) {
+                // Ülke dropdown'ları için bayrak göster
+                if (data.element && (data.element.parentElement.id === 'baslangic_ulkesi' || 
+                               data.element.parentElement.id === 'bitis_ulkesi')) {
+                    return formatUlke(data);
+                }
+                return data.text;
+            },
+            templateSelection: function(data) {
+                // Seçili ülke için bayrak göster
+                if (data.element && (data.element.parentElement.id === 'baslangic_ulkesi' || 
+                               data.element.parentElement.id === 'bitis_ulkesi')) {
+                    return formatUlke(data);
+                }
+                return data.text;
+            }
+        });
+        
+        // Türkiye'yi üste taşı
+        moveTurkeyToTop('baslangic_ulkesi');
+        moveTurkeyToTop('bitis_ulkesi');
+        
+        // Yük cinsi dropdown özel yapılandırma
+        $('#yuk_cinsi').select2({
+            width: '100%',
+            placeholder: "Yük cinsi seçiniz...",
+            allowClear: true
+        });
+        
+        // Tarih seçiciyi başlat
+        $(".datepicker").flatpickr({
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            time_24hr: true,
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: {
+                    shorthand: ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'],
+                    longhand: ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+                },
+                months: {
+                    shorthand: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+                    longhand: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+                }
+            }
+        });
+        
+        // Ülke değişikliklerini izle ve şehirleri güncelle
+        $('#baslangic_ulkesi').on('change', function() {
+            var ulkeId = $(this).val();
+            if (ulkeId) {
+                // Şehir dropdown'ını temizle
+                $('#baslangic_sehri').empty().append('<option value="">Seçiniz</option>');
+                
+                // Şehirleri yükle
+        $.ajax({
+                    url: '/api/cities-by-country/',
+                    data: {country_id: ulkeId},
+            dataType: 'json',
+            success: function(data) {
+                        $.each(data.cities, function(i, city) {
+                            $('#baslangic_sehri').append($('<option>', {
+                                value: city.id,
+                                text: city.sehir_adi
+                            }));
+                        });
+                            
+                            // Select2'yi güncelle
+                            $('#baslangic_sehri').trigger('change');
+                        
+                        // Check if selections are complete
+                        checkRouteSelectionsAndOpenMap();
+                        }
+                    });
+                }
+            });
+            
+            $('#bitis_ulkesi').on('change', function() {
+                var ulkeId = $(this).val();
+                if (ulkeId) {
+                    // Şehir dropdown'ını temizle
+                    $('#bitis_sehri').empty().append('<option value="">Seçiniz</option>');
+                    
+                    // Şehirleri yükle
+                    $.ajax({
+                        url: '/api/cities-by-country/',
+                        data: {country_id: ulkeId},
+                        dataType: 'json',
+                        success: function(data) {
+                            $.each(data.cities, function(i, city) {
+                                $('#bitis_sehri').append($('<option>', {
+                                    value: city.id,
+                                    text: city.sehir_adi
+                                }));
+                            });
+                            
+                            // Select2'yi güncelle
+                            $('#bitis_sehri').trigger('change');
+                        
+                        // Check if selections are complete
+                        checkRouteSelectionsAndOpenMap();
+                        }
+                    });
+                }
+            });
+        
+        // Add change handlers for city selects to check if route is complete
+        $('#baslangic_sehri, #bitis_sehri').on('change', function() {
+            checkRouteSelectionsAndOpenMap();
+        });
+            
+            // Eğer düzenleme modunda ise ve ülke seçiliyse, ilgili şehirleri yükle
+            if ($("#is_edit_mode").val() === "true") {
+                if ($('#baslangic_ulkesi').val()) {
+                    $('#baslangic_ulkesi').trigger('change');
+                }
+                if ($('#bitis_ulkesi').val()) {
+                    $('#bitis_ulkesi').trigger('change');
+                }
+            } else {
+                // Türkiye'yi üste taşı
+                moveTurkeyToTop('baslangic_ulkesi');
+                moveTurkeyToTop('bitis_ulkesi');
+        }
+        
+        // Şehir seçimleri değiştiğinde rota çiz
+        $('#baslangic_sehri, #bitis_sehri').on('change', function() {
+            if (!map) {
+                console.log("Harita henüz yüklenmedi, bekliyor...");
+                // Haritayı yükle
+                waitForMapVisibility();
+                return;
+            }
+            
+            var baslangicSehri = $('#baslangic_sehri option:selected').text();
+            var bitisSehri = $('#bitis_sehri option:selected').text();
+            
+            if (baslangicSehri && bitisSehri) {
+                console.log("Şehir değişikliği:", baslangicSehri, "->", bitisSehri);
+                fetchCoordinatesAndDrawRoute(baslangicSehri, bitisSehri);
+            }
+        });
+        
+        // Form validation
+        $('form').on('submit', function(e) {
+            var firma = $('select[name="firma"]').val();
+            var arac = $('select[name="arac"]').val();
+            var personel = $('select[name="personel"]').val();
+            var sefer_kodu = $('input[name="sefer_kodu"]').val();
+            var cikis_tarihi = $('input[name="cikis_tarihi"]').val();
+            var baslangic_ulkesi = $('#baslangic_ulkesi').val();
+            var baslangic_sehri = $('#baslangic_sehri').val();
+            var bitis_ulkesi = $('#bitis_ulkesi').val();
+            var bitis_sehri = $('#bitis_sehri').val();
+            var tahmini_varis_tarihi = $('input[name="tahmini_varis_tarihi"]').val();
+            
+            var missingFields = [];
+            
+            if (!firma) missingFields.push('Firma');
+            if (!arac) missingFields.push('Araç');
+            if (!personel) missingFields.push('Personel');
+            if (!sefer_kodu) missingFields.push('Sefer Kodu');
+            if (!cikis_tarihi) missingFields.push('Çıkış Tarihi');
+            if (!baslangic_ulkesi) missingFields.push('Başlangıç Ülkesi');
+            if (!baslangic_sehri) missingFields.push('Başlangıç Şehri');
+            if (!bitis_ulkesi) missingFields.push('Bitiş Ülkesi');
+            if (!bitis_sehri) missingFields.push('Bitiş Şehri');
+            if (!tahmini_varis_tarihi) missingFields.push('Tahmini Varış Tarihi');
+            
+            if (missingFields.length > 0) {
+                e.preventDefault();
+                alert("Lütfen aşağıdaki alanları doldurun: " + missingFields.join(", "));
+                return false;
+            }
+        });
+        
+        // Başlangıç kilometresi girildiğinde, bitiş kilometresini otomatik hesapla
+        $("#baslangic_km").change(function() {
+            updateBitisKm();
+        });
+        
+        // Mesafe değeri güncellendiğinde, bitiş kilometresini güncelle
+        $("#mesafe").change(function() {
+            updateBitisKm();
+        });
+        
+        // Bitiş kilometresini güncelleme fonksiyonu
+        function updateBitisKm() {
+            var baslangic_km = parseFloat($("#baslangic_km").val()) || 0;
+            var mesafe = parseFloat($("#mesafe").val()) || 0;
+            
+            if (baslangic_km > 0 && mesafe > 0) {
+                var bitis_km = baslangic_km + mesafe;
+                $("#bitis_km").val(Math.round(bitis_km));
+            } else if (baslangic_km <= 0 || isNaN(baslangic_km)) {
+                // If starting km is not entered or invalid, clear the ending km
+                $("#bitis_km").val('');
+            }
+        }
+        
+        // updateKilometerValues fonksiyonunu yeni updateBitisKm fonksiyonuna yönlendir
+        function updateKilometerValues() {
+            updateBitisKm();
+        }
+        
+        // Çıkış tarihi değiştiğinde tahmini varış tarihini güncelle
+        $("#cikis_tarihi").change(function() {
+            var days = parseFloat($("#total-days").text()) || 0;
+            if (days > 0) {
+                calculateArrivalDate(days);
+            }
+        });
+        
+        // Sayfa yüklendiğinde sefer kodu otomatik oluşturma
+        if ($("#is_edit_mode").val() !== "true" && $("#sefer_kodu").val() === "") {
+            // Otomatik kod oluşturma
+                var today = new Date();
+            var mm = String(today.getMonth() + 1).padStart(2, '0');
+            var yy = String(today.getFullYear()).substr(2);
+            var random = Math.floor(1000 + Math.random() * 9000);
+            $("#sefer_kodu").val("SFR-" + mm + yy + "-" + random);
+        }
+        
+        // Harita işlemleri
+        var map, originMarker, destinationMarker, routeLine, mapOverlay;
+        
+        function initMap() {
+            console.log("Harita başlatılıyor...");
+            
+            // Harita elementi kontrolü
+            if (!document.getElementById('map')) {
+                console.error("Map element bulunamadı!");
+                return;
+            }
+            
+            try {
+                // Harita oluştur - Romanya merkezli başlat
+                map = L.map('map', {
+                    center: [45.9443, 25.0094],  // Romanya merkezi
+                    zoom: 6,
+                    zoomControl: true
+                });
+                
+                // OpenStreetMap karoları
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                console.log("Harita başlatıldı");
+                
+                // Harita kontrol overlay ekle
+                createMapOverlay();
+                
+                // Mevcut rotayı çiz, eğer düzenleme modundaysa
+                if ($("#is_edit_mode").val() === "true") {
+                    var baslangicSehri = $('#baslangic_sehri option:selected').text();
+                    var bitisSehri = $('#bitis_sehri option:selected').text();
+                    
+                    if (baslangicSehri && bitisSehri) {
+                        fetchCoordinatesAndDrawRoute(baslangicSehri, bitisSehri);
+                    }
+                }
+                
+                // Harita yüklendiğinde bildir (debug)
+                map.on('load', function() {
+                    console.log("Harita tamamen yüklendi");
+                });
+                
+            } catch (e) {
+                console.error("Harita başlatma hatası:", e);
+            }
+        }
+        
+        // Harita üzerinde hareket kontrolü için overlay ekle
+        function createMapOverlay() {
+            // Harita container
+            var mapContainer = document.querySelector('.map-container');
+            if (!mapContainer) return;
+            
+            // Var olan overlay'i temizle
+            var existingOverlay = document.querySelector('.map-overlay');
+            if (existingOverlay) existingOverlay.remove();
+            
+            // Overlay oluştur
+            mapOverlay = document.createElement('div');
+            mapOverlay.className = 'map-overlay visible'; // Başlangıçta visible olarak ayarla
+            mapOverlay.innerHTML = '<div class="message">Haritayı görüntülemek için tıklayın</div>';
+            
+            // Overlay'i ekle
+            mapContainer.appendChild(mapOverlay);
+            
+            // Tıklama olayını ekle
+            mapOverlay.addEventListener('click', function(e) {
+                e.preventDefault();
+                toggleMapInteraction(true);
+            });
+            
+            // Fareyi hareket ettirirken haritayı kontrol et
+            mapContainer.addEventListener('mousemove', function(e) {
+                if (!mapContainer.contains(e.target) || mapOverlay.classList.contains('visible')) {
+                    return;
+                }
+                
+                // Eğer overlay aktif değilse ve fare harita dışına çıkarsa, overlay'i göster
+                var rect = mapContainer.getBoundingClientRect();
+                var isOutside = e.clientX < rect.left + 10 || e.clientX > rect.right - 10 || 
+                               e.clientY < rect.top + 10 || e.clientY > rect.bottom - 10;
+                
+                if (isOutside) {
+                    toggleMapInteraction(false);
+                }
+            });
+            
+            // Başlangıçta harita etkileşimini devre dışı bırak
+            if (map) {
+                map.dragging.disable();
+                map.touchZoom.disable();
+                map.doubleClickZoom.disable();
+                map.scrollWheelZoom.disable();
+                map.boxZoom.disable();
+                map.keyboard.disable();
+            }
+        }
+        
+        // Harita etkileşimini aç/kapa
+        function toggleMapInteraction(enable) {
+            if (!mapOverlay) return;
+            
+            if (enable) {
+                // Harita etkileşimini etkinleştir
+                mapOverlay.classList.remove('visible');
+                if (map) {
+                    map.dragging.enable();
+                    map.touchZoom.enable();
+                    map.doubleClickZoom.enable();
+                    map.scrollWheelZoom.enable();
+                    map.boxZoom.enable();
+                    map.keyboard.enable();
+                }
+            } else {
+                // Harita etkileşimini devre dışı bırak
+                mapOverlay.classList.add('visible');
+                if (map) {
+                    map.dragging.disable();
+                    map.touchZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.disable();
+                    map.boxZoom.disable();
+                    map.keyboard.disable();
+                }
+            }
+        }
+        
+        // Rota çizme fonksiyonu
+        function drawRoute(originLat, originLng, destLat, destLng) {
+            console.log("Rota çiziliyor: ", originLat, originLng, "->", destLat, destLng);
+            
+            // Mevcut işaretleyicileri ve rotayı temizle
+            if (originMarker && map.hasLayer(originMarker)) map.removeLayer(originMarker);
+            if (destinationMarker && map.hasLayer(destinationMarker)) map.removeLayer(destinationMarker);
+            if (routeLine && map.hasLayer(routeLine)) map.removeLayer(routeLine);
+            
+            // İşaretleyicileri ekle
+            originMarker = L.marker([originLat, originLng]).addTo(map)
+                .bindPopup('Başlangıç: ' + $('#baslangic_sehri option:selected').text());
+            
+            destinationMarker = L.marker([destLat, destLng]).addTo(map)
+                .bindPopup('Varış: ' + $('#bitis_sehri option:selected').text());
+            
+            // Türkiye'den başlayan ve Türkiye dışına giden rotalar için Romanya üzerinden geçiş kontrolü
+            var baslangicUlkesiText = $('#baslangic_ulkesi option:selected').text();
+            var bitisUlkesiText = $('#bitis_ulkesi option:selected').text();
+            
+            console.log("Başlangıç ülkesi:", baslangicUlkesiText, "Bitiş ülkesi:", bitisUlkesiText);
+            
+            var turkiyedenBasliyor = baslangicUlkesiText.trim() === 'Türkiye';
+            var turkiyeyeGitmiyor = bitisUlkesiText.trim() !== 'Türkiye';
+            var disaridanBasliyor = baslangicUlkesiText.trim() !== 'Türkiye';
+            var turkiyeyeGidiyor = bitisUlkesiText.trim() === 'Türkiye';
+            
+            // İki yönlü seferlerde de (Türkiye'den çıkış veya Türkiye'ye giriş) Romanya'dan geçsin
+            var romanyadanGecmeli = (turkiyedenBasliyor && turkiyeyeGitmiyor) || 
+                                   (disaridanBasliyor && turkiyeyeGidiyor);
+            
+            console.log("Türkiye'den başlıyor:", turkiyedenBasliyor);
+            console.log("Türkiye'ye gitmiyor:", turkiyeyeGitmiyor);
+            console.log("Yurtdışından başlıyor:", disaridanBasliyor);
+            console.log("Türkiye'ye gidiyor:", turkiyeyeGidiyor);
+            console.log("Romanya'dan geçmeli:", romanyadanGecmeli);
+            
+            // Romanya koordinatları - Bükreş
+            var romanyaLat = 44.4268, romanyaLng = 26.1025;
+            
+            // Romanya üzerinden geçmesi gerekiyorsa ara nokta ekle
+            if (romanyadanGecmeli) {
+                console.log("Türkiye dışına rota, Romanya üzerinden geçiliyor...");
+                
+                // OSRM API ile rota hesaplama (via Romanya)
+                // Not: Koordinatları doğru sırayla ve doğru formatta belirtmeliyiz (lng,lat)
+                var waypoints = originLng + ',' + originLat + ';' + 
+                                romanyaLng + ',' + romanyaLat + ';' + 
+                                destLng + ',' + destLat;
+                
+                var url = 'https://router.project-osrm.org/route/v1/driving/' + waypoints + 
+                          '?overview=full&geometries=geojson';
+                
+                console.log("OSRM API çağrılıyor (Romanya üzerinden):", url);
+                
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log("OSRM yanıt (Romanya üzerinden):", data);
+                        if (data.code === 'Ok') {
+                            var route = data.routes[0];
+                            var routeGeometry = route.geometry;
+                            
+                            // Rota çizgisi
+                            routeLine = L.geoJSON(routeGeometry, {
+                                style: {
+                                    color: '#4e73df',
+                                    weight: 5,
+                                    opacity: 0.7
+                                }
+                            }).addTo(map);
+                            
+                            // Harita görünümünü rotaya sığdır
+                            map.fitBounds(routeLine.getBounds(), {padding: [30, 30]});
+                            
+                            // Mesafe ve süre bilgilerini göster
+                            var distance = route.distance / 1000; // metre -> km
+                            var duration = route.duration / 3600; // saniye -> saat
+                            var days = duration / 9.00; // 9 saatlik sürüş günü varsayımı (yuvarlanmadan)
+                            
+                            $('#total-distance').text(Math.round(distance));
+                            $('#total-duration').text(duration.toFixed(2));
+                            $('#total-days').text(days.toFixed(1)); // Ondalık gösterim (1 basamak)
+                            $('#route-info').show();
+                            
+                            // Mesafe alanını güncelle
+                            $('#mesafe').val(Math.round(distance));
+                            updateKilometerValues();
+                            
+                            // Varış tarihini hesapla
+                            calculateArrivalDate(days);
+                        } else {
+                            console.error("OSRM rota bulunamadı (Romanya üzerinden):", data.code);
+                            // Düz çizgi çiz
+                            drawStraightLineViaRomania(originLat, originLng, romanyaLat, romanyaLng, destLat, destLng);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('OSRM API hatası (Romanya üzerinden):', error);
+                        drawStraightLineViaRomania(originLat, originLng, romanyaLat, romanyaLng, destLat, destLng);
+                    });
+            } else {
+                // Normal rota (Romanya zorunluluğu yok)
+                var waypoints = originLng + ',' + originLat + ';' + destLng + ',' + destLat;
+                var url = 'https://router.project-osrm.org/route/v1/driving/' + waypoints +
+                          '?overview=full&geometries=geojson';
+                
+                console.log("OSRM API çağrılıyor (doğrudan):", url);
+                
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log("OSRM yanıt (doğrudan):", data);
+                        if (data.code === 'Ok') {
+                            var route = data.routes[0];
+                            var routeGeometry = route.geometry;
+                            
+                            // Rota çizgisi
+                            routeLine = L.geoJSON(routeGeometry, {
+                                style: {
+                                    color: '#4e73df',
+                                    weight: 5,
+                                    opacity: 0.7
+                                }
+                            }).addTo(map);
+                            
+                            // Harita görünümünü rotaya sığdır
+                            map.fitBounds(routeLine.getBounds(), {padding: [30, 30]});
+                            
+                            // Mesafe ve süre bilgilerini göster
+                            var distance = route.distance / 1000; // metre -> km
+                            var duration = route.duration / 3600; // saniye -> saat
+                            var days = duration / 9.00; // 9 saatlik sürüş günü varsayımı (yuvarlanmadan)
+                            
+                            $('#total-distance').text(Math.round(distance));
+                            $('#total-duration').text(duration.toFixed(2));
+                            $('#total-days').text(days.toFixed(1)); // Ondalık gösterim (1 basamak)
+                            $('#route-info').show();
+                            
+                            // Mesafe alanını güncelle
+                            $('#mesafe').val(Math.round(distance));
+                            updateKilometerValues();
+                            
+                            // Varış tarihini hesapla
+                            calculateArrivalDate(days);
+                        } else {
+                            console.error("OSRM rota bulunamadı (doğrudan):", data.code);
+                            // Düz çizgi çiz
+                            drawStraightLine(originLat, originLng, destLat, destLng);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('OSRM API hatası (doğrudan):', error);
+                        drawStraightLine(originLat, originLng, destLat, destLng);
+                    });
+            }
+        }
+        
+        // Varış tarihini hesapla
+        function calculateArrivalDate(days) {
+            if ($('#cikis_tarihi').val()) {
+                var cikisTarihi = new Date($('#cikis_tarihi').val());
+                var varisTarihi = new Date(cikisTarihi);
+                
+                // Günlerin tam kısmı ve kesirli kısmını hesapla
+                var tamGunler = Math.floor(days);
+                var kesirliGun = days - tamGunler;
+                var kesirliSaat = kesirliGun * 24; // Saatlere dönüştür
+                
+                // Tam günleri ekle
+                varisTarihi.setDate(varisTarihi.getDate() + tamGunler);
+                
+                // Kesirli günleri saat olarak ekle
+                varisTarihi.setHours(varisTarihi.getHours() + kesirliSaat);
+                
+                // Tarih formatını ayarla
+                var yil = varisTarihi.getFullYear();
+                var ay = String(varisTarihi.getMonth() + 1).padStart(2, '0');
+                var gun = String(varisTarihi.getDate()).padStart(2, '0');
+                var saat = String(varisTarihi.getHours()).padStart(2, '0');
+                var dakika = String(varisTarihi.getMinutes()).padStart(2, '0');
+                
+                $('#tahmini_varis_tarihi').val(yil + '-' + ay + '-' + gun + ' ' + saat + ':' + dakika);
+            }
+        }
+
+        // API yanıtını işle
+        function handleRouteResponse(data, originLat, originLng, destLat, destLng) {
+            console.log("OSRM Yanıt:", data);
+            
+            if (data.code === 'Ok') {
+                var route = data.routes[0];
+                var routeGeometry = route.geometry;
+                
+                // Rota çizgisi
+                routeLine = L.geoJSON(routeGeometry, {
+                    style: {
+                        color: '#4e73df',
+                        weight: 5,
+                        opacity: 0.7
+                    }
+                }).addTo(map);
+                
+                // Harita görünümünü rotaya sığdır
+                map.fitBounds(routeLine.getBounds(), {padding: [30, 30]});
+                
+                // Mesafe ve süre bilgilerini göster
+                var distance = route.distance / 1000; // metre -> km
+                var duration = route.duration / 3600; // saniye -> saat
+                var days = duration / 9.00; // 9 saatlik sürüş günü varsayımı (yuvarlanmadan)
+                
+                $('#total-distance').text(Math.round(distance));
+                $('#total-duration').text(duration.toFixed(2));
+                $('#total-days').text(days.toFixed(1)); // Ondalık gösterim (1 basamak)
+                $('#route-info').show();
+                
+                // Mesafe alanını güncelle
+                $('#mesafe').val(Math.round(distance));
+                updateKilometerValues();
+                
+                // Varış tarihini hesapla
+                calculateArrivalDate(days);
+            } else {
+                console.error("OSRM rota bulunamadı:", data.code);
+                // Düz çizgi çiz
+                drawStraightLine(originLat, originLng, destLat, destLng);
+            }
+        }
+
+        // Haritanın görünür hale gelmesini bekle
+        function waitForMapVisibility() {
+            var mapElement = document.getElementById('map');
+            if (mapElement && mapElement.offsetWidth > 0 && mapElement.offsetHeight > 0) {
+                initMap();
+            } else {
+                console.log("Harita henüz görünür değil, tekrar denenecek...");
+                setTimeout(waitForMapVisibility, 500);
+            }
+        }
+        
+        // Düz mesafe hesaplama (Haversine formülü)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            var R = 6371; // Dünya yarıçapı (km)
+            var dLat = deg2rad(lat2 - lat1);
+            var dLon = deg2rad(lon2 - lon1);
+            var a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2); 
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+            var d = R * c; // Mesafe (km)
+            return d * 1.2; // Yol mesafesi için %20 düzeltme faktörü
+        }
+        
+        function deg2rad(deg) {
+            return deg * (Math.PI/180);
+        }
+        
+        // Koordinat bulma ve rota çizme
+        function fetchCoordinatesAndDrawRoute(originCity, destCity) {
+            console.log("Şehirler için koordinatlar alınıyor:", originCity, destCity);
+            
+            // Başlangıç şehri koordinatları
+            fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(originCity))
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Başlangıç şehri yanıt:", data);
+                    
+                    if (data && data.length > 0) {
+                        var originLat = parseFloat(data[0].lat);
+                        var originLng = parseFloat(data[0].lon);
+                        
+                        // Bitiş şehri koordinatları
+                        return fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(destCity))
+                            .then(response => response.json())
+                            .then(data => {
+                                console.log("Bitiş şehri yanıt:", data);
+                                
+                                if (data && data.length > 0) {
+                                    var destLat = parseFloat(data[0].lat);
+                                    var destLng = parseFloat(data[0].lon);
+                                    
+                                    drawRoute(originLat, originLng, destLat, destLng);
+                                } else {
+                                    console.error("Bitiş şehri için koordinat bulunamadı:", destCity);
+                                }
+                            });
+                    } else {
+                        console.error("Başlangıç şehri için koordinat bulunamadı:", originCity);
+                    }
+                })
+                .catch(error => {
+                    console.error('Geocoding hatası:', error);
+                });
+        }
+        
+        // Harita başlat
+        setTimeout(function() {
+            waitForMapVisibility();
+        }, 500);
+        
+        // Harita card'ı açıldığında harita yeniden boyutlandır
+        $('#mapCollapse').on('shown.bs.collapse', function() {
+            if (map) {
+                setTimeout(function() {
+                    map.invalidateSize();
+                }, 100);
+            } else {
+                waitForMapVisibility();
+            }
+        });
+
+        // Romanya üzerinden düz çizgiler çiz
+        function drawStraightLineViaRomania(originLat, originLng, romanyaLat, romanyaLng, destLat, destLng) {
+            console.log("Düz çizgiler çiziliyor (Romanya üzerinden)");
+            
+            // Romanya işaretleyicisini kaldır (yalnızca hesaplama için kullan)
+            // var romanyaMarker = L.marker([romanyaLat, romanyaLng]).addTo(map)
+            //    .bindPopup('Geçiş: Romanya (Bükreş)').openPopup();
+            
+            // Düz çizgiler oluştur (iki parça)
+            var latlngs1 = [
+                [originLat, originLng],
+                [romanyaLat, romanyaLng]
+            ];
+            
+            var latlngs2 = [
+                [romanyaLat, romanyaLng],
+                [destLat, destLng]
+            ];
+            
+            // Çizgileri çiz
+            var line1 = L.polyline(latlngs1, {color: '#4e73df', weight: 4}).addTo(map);
+            var line2 = L.polyline(latlngs2, {color: '#4e73df', weight: 4, dashArray: '5, 10'}).addTo(map);
+            
+            // İki çizgiyi birleştir (silme işlemi için)
+            routeLine = L.featureGroup([line1, line2]).addTo(map);
+            
+            // Harita görünümünü tüm rotaya sığdır
+            map.fitBounds(routeLine.getBounds(), {padding: [30, 30]});
+            
+            // Yaklaşık mesafeyi hesapla
+            var distance1 = calculateDistance(originLat, originLng, romanyaLat, romanyaLng);
+            var distance2 = calculateDistance(romanyaLat, romanyaLng, destLat, destLng);
+            var totalDistance = distance1 + distance2;
+            
+            var duration = totalDistance / 70; // Ortalama 70 km/saat hız varsayımı
+            var days = duration / 9.00; // 9 saatlik sürüş günü varsayımı (yuvarlanmadan)
+            
+            $('#total-distance').text(Math.round(totalDistance));
+            $('#total-duration').text(duration.toFixed(2));
+            $('#total-days').text(days.toFixed(1)); // Ondalık gösterim (1 basamak)
+            $('#route-info').show();
+            
+            // Mesafe alanını güncelle
+            $('#mesafe').val(Math.round(totalDistance));
+            updateKilometerValues();
+            
+            // Varış tarihini hesapla
+            calculateArrivalDate(days);
+        }
+        
+        // Rota bulunamazsa düz çizgi çizme
+        function drawStraightLine(originLat, originLng, destLat, destLng) {
+            console.log("Düz çizgi çiziliyor");
+            
+            // Düz çizgi oluştur
+            var latlngs = [
+                [originLat, originLng],
+                [destLat, destLng]
+            ];
+            
+            routeLine = L.polyline(latlngs, {color: '#f6c23e', weight: 4, dashArray: '5, 10'}).addTo(map);
+            
+            // Harita görünümünü çizgiye sığdır
+            map.fitBounds(routeLine.getBounds(), {padding: [30, 30]});
+            
+            // Yaklaşık mesafeyi hesapla (düz çizgi)
+            var distance = calculateDistance(originLat, originLng, destLat, destLng);
+            var duration = distance / 70; // Ortalama 70 km/saat hız varsayımı
+            var days = duration / 9.00; // 9 saatlik sürüş günü varsayımı (yuvarlanmadan)
+            
+            $('#total-distance').text(Math.round(distance));
+            $('#total-duration').text(duration.toFixed(2));
+            $('#total-days').text(days.toFixed(1)); // Ondalık gösterim (1 basamak)
+            $('#route-info').show();
+            
+            // Mesafe alanını güncelle
+            $('#mesafe').val(Math.round(distance));
+            updateKilometerValues();
+            
+            // Varış tarihini hesapla
+            calculateArrivalDate(days);
+        }
+    });
+</script>
+{% endblock %} 

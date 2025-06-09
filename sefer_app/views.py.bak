@@ -1,0 +1,3146 @@
+from django.shortcuts import render, get_object_or_404, redirect
+from django.http import JsonResponse, HttpResponse, Http404
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.db.models import Sum, Count, Q, F
+from datetime import datetime, timedelta, date
+import calendar
+from decimal import Decimal
+from django.db import connection
+from django.urls import reverse
+import json
+import csv
+import io
+import re
+
+from .models import (
+    Ulkeler, Sehirler, Firmalar, Personeller, AracBilgileri,
+    AracBakim, AracUyari, Kasalar, Seferler, SeferMasraf,
+    Faturalar, Urunler, FaturaOdeme, GenelKasaHareketi, KasaTransfer
+)
+
+
+def index(request):
+    """Dashboard view showing overview of trips, income, expenses, and alerts."""
+    # Get filter period (default to current month)
+    filter_period = request.GET.get('period', 'month')
+
+    today = datetime.now()
+
+    # Set date ranges based on filter period
+    if filter_period == 'month':
+        # Current month
+        start_date = today.replace(
+    day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        end_date = today.replace(
+    day=last_day,
+    hour=23,
+    minute=59,
+    second=59,
+     microsecond=999999)
+        period_name = "Bu Ay"
+    elif filter_period == '30days':
+        # Last 30 days
+        start_date = today - timedelta(days=30)
+        end_date = today
+        period_name = "Son 30 Gün"
+    elif filter_period == 'year':
+        # Current year
+        start_date = today.replace(
+    month=1,
+    day=1,
+    hour=0,
+    minute=0,
+    second=0,
+     microsecond=0)
+        end_date = today.replace(
+    month=12,
+    day=31,
+    hour=23,
+    minute=59,
+    second=59,
+     microsecond=999999)
+        period_name = str(today.year)
+    else:  # 'all'
+        # All time
+        start_date = datetime(1900, 1, 1)
+        end_date = datetime(2100, 12, 31)
+        period_name = "Tümü"
+
+    # Count active trips
+    aktif_sefer_sayisi = Seferler.objects.filter(durum='Aktif').count()
+
+    # Calculate total income (from faturalar)
+    faturalar = Faturalar.objects.filter(
+    FaturaTarihi__range=(
+        start_date, end_date), FaturaTipi__in=[
+            'Satış', 'Nakliye'])
+    gelir = faturalar.aggregate(total=Sum('ToplamTutar'))['total'] or 0
+
+    # Calculate total expenses (from masraflar)
+    masraflar = SeferMasraf.objects.filter(Tarih__range=(start_date, end_date))
+    gider = masraflar.aggregate(total=Sum('TutarEUR'))['total'] or 0
+
+    # Get active alerts
+    uyari_sayisi = AracUyari.objects.filter(durum='Aktif').count()
+
+    # Get active trips for display
+    aktif_seferler = Seferler.objects.all().order_by('-cikis_tarihi')[:5]
+
+    context = {
+        'filter_period': filter_period,
+        'period_name': period_name,
+        'sefer_sayisi': aktif_sefer_sayisi,
+        'gelir': gelir,
+        'gider': gider,
+        'uyari_sayisi': uyari_sayisi,
+        'aktif_seferler': aktif_seferler,
+    }
+    return render(request, 'sefer_app/index.html', context)
+
+# Seferler (Trips) Views
+
+
+def sefer_list(request):
+    """List all trips with filtering options."""
+    # Base queryset
+    seferler = Seferler.objects.all().order_by('-cikis_tarihi')
+
+    # Get filter parameters
+    durum = request.GET.get('durum', '')
+    baslangic_tarihi = request.GET.get('baslangic_tarihi', '')
+    bitis_tarihi = request.GET.get('bitis_tarihi', '')
+    firma_id = request.GET.get('firma', '')
+    personel_id = request.GET.get('personel', '')
+    arac_id = request.GET.get('arac', '')
+    arama = request.GET.get('arama', '')
+
+    # Apply filters
+    if durum:
+        seferler = seferler.filter(durum=durum)
+
+    if baslangic_tarihi:
+        seferler = seferler.filter(cikis_tarihi__gte=baslangic_tarihi)
+
+    if bitis_tarihi:
+        seferler = seferler.filter(cikis_tarihi__lte=bitis_tarihi)
+
+    if firma_id:
+        seferler = seferler.filter(firma_id=firma_id)
+
+    if personel_id:
+        seferler = seferler.filter(personel_id=personel_id)
+
+    if arac_id:
+        seferler = seferler.filter(arac_id=arac_id)
+
+    if arama:
+        seferler = seferler.filter(
+            Q(rota__icontains=arama) |
+            Q(aciklama__icontains=arama) |
+            Q(firma__FirmaAdi__icontains=arama)
+        )
+
+    # Count by status for statistics
+    aktif_seferler_sayisi = Seferler.objects.filter(durum='Aktif').count()
+    tamamlanan_seferler_sayisi = Seferler.objects.filter(
+        durum='Tamamlandı').count()
+    iptal_edilen_seferler_sayisi = Seferler.objects.filter(
+        durum='İptal Edildi').count()
+
+    # Get related data for filter dropdowns
+    firmalar = Firmalar.objects.filter(AktifMi=True).order_by('FirmaAdi')
+    personeller = Personeller.objects.all().order_by('PerAd')
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+
+    context = {
+        'seferler': seferler,
+        'firmalar': firmalar,
+        'personeller': personeller,
+        'araclar': araclar,
+        'aktif_seferler_sayisi': aktif_seferler_sayisi,
+        'tamamlanan_seferler_sayisi': tamamlanan_seferler_sayisi,
+        'iptal_edilen_seferler_sayisi': iptal_edilen_seferler_sayisi,
+        'toplam_sefer_sayisi': seferler.count(),
+        # Keep current filters for pagination
+        'durum_filtre': durum,
+        'baslangic_tarihi_filtre': baslangic_tarihi,
+        'bitis_tarihi_filtre': bitis_tarihi,
+        'firma_filtre': firma_id,
+        'personel_filtre': personel_id,
+        'arac_filtre': arac_id,
+        'arama_filtre': arama,
+    }
+    return render(request, 'sefer_app/sefer_list.html', context)
+
+
+def sefer_detail(request, pk):
+    """Display detailed information about a specific trip."""
+    sefer = get_object_or_404(Seferler, pk=pk)
+    masraflar = SeferMasraf.objects.filter(Sefer=sefer).order_by('-Tarih')
+
+    # Masraf ekleme formu için kasaları al
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+
+    # İlgili faturalar
+    faturalar = Faturalar.objects.filter(Sefer=sefer).order_by('-FaturaTarihi')
+
+    # Calculate total expenses
+    toplam_masraf_tl = masraflar.aggregate(Sum('Tutar'))['Tutar__sum'] or 0
+    toplam_masraf_eur = masraflar.aggregate(
+        Sum('TutarEUR'))['TutarEUR__sum'] or 0
+
+    # Group expenses by type
+    masraf_tipleri = {}
+    for masraf in masraflar:
+        tip = masraf.MasrafTipi
+        if tip not in masraf_tipleri:
+            masraf_tipleri[tip] = 0
+        masraf_tipleri[tip] += masraf.TutarEUR
+
+    # Sefer ücretini güncelleyelim - nakliye faturalarına göre (view anında)
+    if hasattr(
+    sefer, 'ucret') and faturalar.filter(
+        FaturaTipi='Nakliye').exists():
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT SUM(ToplamTutar)
+                    FROM sefer_app_faturalar
+                    WHERE Sefer_id = %s AND FaturaTipi = 'Nakliye'
+                """, [pk])
+                toplam_nakliye = cursor.fetchone()[0] or 0
+
+            if toplam_nakliye:
+                sefer.ucret = toplam_nakliye
+                sefer.save()
+                print(
+    f"Sefer detay sayfasında ücret güncellendi: {toplam_nakliye} EUR")
+        except Exception as e:
+            print(f"Sefer ücret güncellenirken hata: {str(e)}")
+
+    # Calculate remaining budget from sefer.ucret
+    kalan_butce = 0
+    if hasattr(sefer, 'ucret') and sefer.ucret:
+        kalan_butce = sefer.ucret - toplam_masraf_eur
+
+    # Calculate trip duration
+    if hasattr(
+    sefer,
+     'donus_tarihi') and sefer.donus_tarihi and sefer.cikis_tarihi:
+        sure = (sefer.donus_tarihi - sefer.cikis_tarihi).days
+    else:
+        sure = None
+
+    # Bugünün tarihi (masraf formunda kullanılacak)
+    from datetime import date
+    today = date.today()
+
+    context = {
+        'sefer': sefer,
+        'masraflar': masraflar,
+        'faturalar': faturalar,
+        'toplam_masraf_tl': toplam_masraf_tl,
+        'toplam_masraf_eur': toplam_masraf_eur,
+        'masraf_tipleri': masraf_tipleri,
+        'kalan_butce': kalan_butce,
+        'sure': sure,
+        'kasalar': kasalar,
+        'today': today,
+        # Nakliye faturası bilgisi artık gönderilmiyor
+    }
+    return render(request, 'sefer_app/sefer_detail.html', context)
+
+
+def sefer_create(request):
+    """Create a new trip."""
+    # Get data for select options
+    firmalar = Firmalar.objects.filter(AktifMi=True).order_by('FirmaAdi')
+    personeller = Personeller.objects.all().order_by('PerAd')
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    ulkeler = Ulkeler.objects.all().order_by('ulke_adi')
+    sehirler = Sehirler.objects.all().order_by('sehir_adi')
+
+    if request.method == 'POST':
+        # Process form data
+        firma_id = request.POST.get('firma')
+        arac_id = request.POST.get('arac')
+        personel_id = request.POST.get('personel')
+        yuk_cinsi = request.POST.get('yuk_cinsi')
+        sefer_kodu = request.POST.get('sefer_kodu')
+        guzergah = request.POST.get('guzergah', '')
+        cikis_tarihi = request.POST.get('cikis_tarihi')
+        tahmini_varis_tarihi = request.POST.get('tahmini_varis_tarihi')
+        durum = request.POST.get('durum', 'Aktif')
+        ucret = request.POST.get('ucret')
+        baslangic_ulkesi_id = request.POST.get('baslangic_ulkesi')
+        baslangic_sehri_id = request.POST.get('baslangic_sehri')
+        bitis_ulkesi_id = request.POST.get('bitis_ulkesi')
+        bitis_sehri_id = request.POST.get('bitis_sehri')
+        baslangic_km = request.POST.get('baslangic_km')
+        bitis_km = request.POST.get('bitis_km')
+        mesafe = request.POST.get('mesafe')
+
+        # Print debug info
+        print(f"POST data received: {request.POST}")
+        print(
+    f"Required fields: firma={firma_id}, arac={arac_id}, personel={personel_id}, sefer_kodu={sefer_kodu}, cikis_tarihi={cikis_tarihi}")
+        print(
+    f"Foreign keys: baslangic_ulkesi={baslangic_ulkesi_id}, baslangic_sehri={baslangic_sehri_id}, bitis_ulkesi={bitis_ulkesi_id}, bitis_sehri={bitis_sehri_id}")
+
+        # Comprehensive validation
+        missing_fields = []
+        if not firma_id:
+            missing_fields.append('Firma')
+        if not arac_id:
+            missing_fields.append('Araç')
+        if not personel_id:
+            missing_fields.append('Personel')
+        if not sefer_kodu:
+            missing_fields.append('Sefer kodu')
+        if not cikis_tarihi:
+            missing_fields.append('Çıkış tarihi')
+
+        # Additional required fields based on model constraints
+        if not baslangic_ulkesi_id:
+            missing_fields.append('Başlangıç ülkesi')
+        if not baslangic_sehri_id:
+            missing_fields.append('Başlangıç şehri')
+        if not bitis_ulkesi_id:
+            missing_fields.append('Bitiş ülkesi')
+        if not bitis_sehri_id:
+            missing_fields.append('Bitiş şehri')
+
+        if missing_fields:
+            error_message = f'Aşağıdaki alanlar zorunludur: {
+    ", ".join(missing_fields)}.'
+            messages.error(request, error_message)
+            context = {
+                'firmalar': firmalar,
+                'personeller': personeller,
+                'araclar': araclar,
+                'ulkeler': ulkeler,
+                'sehirler': sehirler,
+                'form_data': request.POST,
+            }
+            return render(request, 'sefer_app/sefer_form.html', context)
+
+        # Convert numeric values
+        try:
+            if ucret:
+                ucret = Decimal(ucret)
+            else:
+                ucret = None
+
+            if baslangic_km:
+                baslangic_km = int(baslangic_km)
+            else:
+                baslangic_km = None
+
+            if bitis_km:
+                bitis_km = int(bitis_km)
+            else:
+                bitis_km = None
+
+            if mesafe:
+                mesafe = Decimal(mesafe)
+            else:
+                mesafe = None
+        except Exception as e:
+            error_message = f'Sayısal değerler geçerli değil. Hata: {str(e)}'
+            messages.error(request, error_message)
+            context = {
+                'firmalar': firmalar,
+                'personeller': personeller,
+                'araclar': araclar,
+                'ulkeler': ulkeler,
+                'sehirler': sehirler,
+                'form_data': request.POST,
+            }
+            return render(request, 'sefer_app/sefer_form.html', context)
+
+        # Create new trip
+        try:
+            # Prepare data for debugging
+            sefer_data = {
+                'sefer_kodu': sefer_kodu,
+                'firma_id': firma_id,
+                'arac_id': arac_id,
+                'personel_id': personel_id,
+                'yuk_cinsi': yuk_cinsi,
+                'guzergah': guzergah,
+                'cikis_tarihi': cikis_tarihi,
+                'tahmini_varis_tarihi': tahmini_varis_tarihi if tahmini_varis_tarihi else None,
+                'durum': durum,
+                'ucret': ucret,
+                'baslangic_ulkesi_id': baslangic_ulkesi_id,
+                'baslangic_sehri_id': baslangic_sehri_id,
+                'bitis_ulkesi_id': bitis_ulkesi_id,
+                'bitis_sehri_id': bitis_sehri_id,
+                'baslangic_km': baslangic_km,
+                'bitis_km': bitis_km,
+                'mesafe': mesafe
+            }
+            print(f"Creating sefer with data: {sefer_data}")
+
+            sefer = Seferler(
+                sefer_kodu=sefer_kodu,
+                firma_id=firma_id,
+                arac_id=arac_id,
+                personel_id=personel_id,
+                yuk_cinsi=yuk_cinsi,
+                guzergah=guzergah,
+                cikis_tarihi=cikis_tarihi,
+                tahmini_varis_tarihi=tahmini_varis_tarihi if tahmini_varis_tarihi else None,
+                durum=durum,
+                ucret=ucret,
+                baslangic_ulkesi_id=baslangic_ulkesi_id,
+                baslangic_sehri_id=baslangic_sehri_id,
+                bitis_ulkesi_id=bitis_ulkesi_id,
+                bitis_sehri_id=bitis_sehri_id,
+                baslangic_km=baslangic_km,
+                bitis_km=bitis_km,
+                mesafe=mesafe
+            )
+            sefer.save()
+            messages.success(request, 'Sefer başarıyla oluşturuldu.')
+            return redirect('sefer_detail', pk=sefer.id)
+        except Exception as e:
+            error_message = f'Sefer oluşturulurken hata oluştu: {str(e)}'
+            print(error_message)
+            messages.error(request, error_message)
+
+    # Display empty form
+    context = {
+        'firmalar': firmalar,
+        'personeller': personeller,
+        'araclar': araclar,
+        'ulkeler': ulkeler,
+        'sehirler': sehirler,
+        'form_data': {},
+    }
+    return render(request, 'sefer_app/sefer_form.html', context)
+
+
+def sefer_update(request, pk):
+    """Update an existing trip."""
+    sefer = get_object_or_404(Seferler, pk=pk)
+
+    # Get data for select options
+    firmalar = Firmalar.objects.filter(AktifMi=True).order_by('FirmaAdi')
+    personeller = Personeller.objects.all().order_by('PerAd')
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    ulkeler = Ulkeler.objects.all().order_by('ulke_adi')
+    sehirler = Sehirler.objects.all().order_by('sehir_adi')
+
+    if request.method == 'POST':
+        # Process form data
+        firma_id = request.POST.get('firma')
+        arac_id = request.POST.get('arac')
+        personel_id = request.POST.get('personel')
+        yuk_cinsi = request.POST.get('yuk_cinsi')
+        sefer_kodu = request.POST.get('sefer_kodu')
+        guzergah = request.POST.get('guzergah')
+        cikis_tarihi = request.POST.get('cikis_tarihi')
+        tahmini_varis_tarihi = request.POST.get('tahmini_varis_tarihi')
+        durum = request.POST.get('durum')
+        ucret = request.POST.get('ucret')
+        baslangic_ulkesi_id = request.POST.get('baslangic_ulkesi')
+        baslangic_sehri_id = request.POST.get('baslangic_sehri')
+        bitis_ulkesi_id = request.POST.get('bitis_ulkesi')
+        bitis_sehri_id = request.POST.get('bitis_sehri')
+        baslangic_km = request.POST.get('baslangic_km')
+        bitis_km = request.POST.get('bitis_km')
+        mesafe = request.POST.get('mesafe')
+
+        # Basic validation
+        if not firma_id or not arac_id or not personel_id or not sefer_kodu or not cikis_tarihi:
+            messages.error(
+    request,
+     'Firma, araç, personel, sefer kodu ve çıkış tarihi alanları zorunludur.')
+            context = {
+                'sefer': sefer,
+                'firmalar': firmalar,
+                'personeller': personeller,
+                'araclar': araclar,
+                'ulkeler': ulkeler,
+                'sehirler': sehirler,
+                'form_data': request.POST,
+            }
+            return render(request, 'sefer_app/sefer_form.html', context)
+
+        # Convert numeric values
+        try:
+            if ucret:
+                ucret = Decimal(ucret)
+            else:
+                ucret = None
+
+            if baslangic_km:
+                baslangic_km = int(baslangic_km)
+            else:
+                baslangic_km = None
+
+            if bitis_km:
+                bitis_km = int(bitis_km)
+            else:
+                bitis_km = None
+
+            if mesafe:
+                mesafe = Decimal(mesafe)
+            else:
+                mesafe = None
+        except:
+            messages.error(
+    request,
+     'Sayısal değerler geçerli değil. Lütfen kontrol ediniz.')
+            context = {
+                'sefer': sefer,
+                'firmalar': firmalar,
+                'personeller': personeller,
+                'araclar': araclar,
+                'ulkeler': ulkeler,
+                'sehirler': sehirler,
+                'form_data': request.POST,
+            }
+            return render(request, 'sefer_app/sefer_form.html', context)
+
+        # Update trip
+        try:
+            sefer.sefer_kodu = sefer_kodu
+            sefer.firma_id = firma_id
+            sefer.arac_id = arac_id
+            sefer.personel_id = personel_id
+            sefer.yuk_cinsi = yuk_cinsi
+            sefer.guzergah = guzergah
+            sefer.cikis_tarihi = cikis_tarihi
+            sefer.tahmini_varis_tarihi = tahmini_varis_tarihi if tahmini_varis_tarihi else None
+            sefer.durum = durum
+            sefer.ucret = ucret
+            sefer.baslangic_ulkesi_id = baslangic_ulkesi_id if baslangic_ulkesi_id else None
+            sefer.baslangic_sehri_id = baslangic_sehri_id if baslangic_sehri_id else None
+            sefer.bitis_ulkesi_id = bitis_ulkesi_id if bitis_ulkesi_id else None
+            sefer.bitis_sehri_id = bitis_sehri_id if bitis_sehri_id else None
+            sefer.baslangic_km = baslangic_km
+            sefer.bitis_km = bitis_km
+            sefer.mesafe = mesafe
+
+            sefer.save()
+            messages.success(request, 'Sefer başarıyla güncellendi.')
+            return redirect('sefer_detail', pk=sefer.id)
+        except Exception as e:
+            messages.error(
+    request,
+    f'Sefer güncellenirken hata oluştu: {
+        str(e)}')
+
+    # Display form with current data
+    context = {
+        'sefer': sefer,
+        'firmalar': firmalar,
+        'personeller': personeller,
+        'araclar': araclar,
+        'ulkeler': ulkeler,
+        'sehirler': sehirler,
+    }
+    return render(request, 'sefer_app/sefer_form.html', context)
+
+
+def sefer_delete(request, pk):
+    """Delete a trip."""
+    sefer = get_object_or_404(Seferler, pk=pk)
+
+    # Check if trip has related records
+    has_masraflar = SeferMasraf.objects.filter(Sefer=sefer).exists()
+    has_faturalar = Faturalar.objects.filter(Sefer=sefer).exists()
+
+    if request.method == 'POST':
+        if 'confirm_delete' in request.POST:
+            try:
+                sefer.delete()
+                messages.success(request, 'Sefer başarıyla silindi.')
+                return redirect('sefer_list')
+            except Exception as e:
+                messages.error(
+    request,
+    f'Sefer silinirken hata oluştu: {
+        str(e)}')
+                return redirect('sefer_detail', pk=pk)
+        else:
+            return redirect('sefer_detail', pk=pk)
+
+    context = {
+        'sefer': sefer,
+        'has_related_records': has_masraflar or has_faturalar,
+    }
+    return render(request, 'sefer_app/sefer_delete.html', context)
+
+# Firmalar (Companies) Views
+
+
+def firma_list(request):
+    """List all companies with filtering options."""
+    # Apply filters if provided
+    firma_tipi = request.GET.get('firma_tipi', '')
+    arama = request.GET.get('arama', '')
+    vergi_no = request.GET.get('vergi_no', '')
+
+    # Base queryset
+    firmalar = Firmalar.objects.all().order_by('FirmaAdi')
+
+    # Apply filters
+    if firma_tipi:
+        firmalar = firmalar.filter(FirmaTipi=firma_tipi)
+
+    if arama:
+        firmalar = firmalar.filter(FirmaAdi__icontains=arama)
+
+    if vergi_no:
+        firmalar = firmalar.filter(VergiNumarasi__icontains=vergi_no)
+
+    # Count companies by type
+    musteri_sayisi = Firmalar.objects.filter(FirmaTipi='Müşteri').count()
+    tedarikci_sayisi = Firmalar.objects.filter(FirmaTipi='Tedarikçi').count()
+    nakliyeci_sayisi = Firmalar.objects.filter(FirmaTipi='Nakliyeci').count()
+
+    # Export functionality (for Excel/PDF export buttons)
+    export_format = request.GET.get('export', '')
+    if export_format:
+        # Implement export functionality here
+        pass
+
+    context = {
+        'firmalar': firmalar,
+        'musteri_sayisi': musteri_sayisi,
+        'tedarikci_sayisi': tedarikci_sayisi,
+        'nakliyeci_sayisi': nakliyeci_sayisi,
+    }
+    return render(request, 'sefer_app/firma_list.html', context)
+
+
+def firma_detail(request, pk):
+    """Display detailed information about a specific company."""
+    firma = get_object_or_404(Firmalar, pk=pk)
+    seferler = Seferler.objects.filter(firma=firma).order_by('-cikis_tarihi')
+    faturalar = Faturalar.objects.filter(Firma=firma).order_by('-FaturaTarihi')
+
+    # Limit seferler and faturalar for display
+    seferler_display = seferler[:10]  # Last 10 trips
+    faturalar_display = faturalar[:10]  # Last 10 invoices
+
+    # Count trips
+    sefer_sayisi = seferler.count()
+
+    # Calculate financial summary
+    alis_faturalar = faturalar.filter(FaturaTipi='Alış')
+    satis_faturalar = faturalar.filter(FaturaTipi='Satış')
+    nakliye_faturalar = faturalar.filter(FaturaTipi='Nakliye')
+
+    alis_toplam = alis_faturalar.aggregate(Sum('ToplamTutar'))[
+                                           'ToplamTutar__sum'] or Decimal('0.00')
+    satis_toplam = satis_faturalar.aggregate(
+    Sum('ToplamTutar'))['ToplamTutar__sum'] or Decimal('0.00')
+    nakliye_toplam = nakliye_faturalar.aggregate(
+    Sum('ToplamTutar'))['ToplamTutar__sum'] or Decimal('0.00')
+
+    # Combined sales and transport revenues
+    gelir_toplam = satis_toplam + nakliye_toplam
+
+    # Calculate balance (income - expenses)
+    bakiye = gelir_toplam - alis_toplam
+
+    # Get last transaction date
+    son_fatura = faturalar.first()
+    son_sefer = seferler.first()
+
+    if son_fatura and son_sefer:
+        son_islem_tarihi = max(
+    son_fatura.FaturaTarihi,
+     son_sefer.cikis_tarihi.date())
+    elif son_fatura:
+        son_islem_tarihi = son_fatura.FaturaTarihi
+    elif son_sefer:
+        son_islem_tarihi = son_sefer.cikis_tarihi.date()
+    else:
+        son_islem_tarihi = None
+
+    context = {
+        'firma': firma,
+        'seferler': seferler_display,
+        'faturalar': faturalar_display,
+        'sefer_sayisi': sefer_sayisi,
+        'alis_toplam': alis_toplam,
+        'satis_toplam': satis_toplam,
+        'nakliye_toplam': nakliye_toplam,
+        'gelir_toplam': gelir_toplam,
+        'bakiye': bakiye,
+        'son_islem_tarihi': son_islem_tarihi,
+    }
+    return render(request, 'sefer_app/firma_detail.html', context)
+
+
+def firma_create(request):
+    """Create a new company."""
+    if request.method == 'POST':
+        # Process form data
+        firma_adi = request.POST.get('firma_adi')
+        firma_tipi = request.POST.get('firma_tipi')
+        yetkili_kisi = request.POST.get('yetkili_kisi')
+        aktif_mi = request.POST.get('aktif_mi') == 'True'
+        telefon = request.POST.get('telefon')
+        eposta = request.POST.get('eposta')
+        web_sitesi = request.POST.get('web_sitesi')
+        adres = request.POST.get('adres')
+        vergi_numarasi = request.POST.get('vergi_numarasi')
+        vergi_dairesi = request.POST.get('vergi_dairesi')
+        para_birimi = request.POST.get('para_birimi')
+        notlar = request.POST.get('notlar')
+
+        # Basic validation
+        if not firma_adi or not firma_tipi:
+            messages.error(request, 'Cari adı ve tipi zorunludur.')
+            return render(request, 'sefer_app/firma_form.html')
+
+        # Create new company
+        firma = Firmalar(
+            FirmaAdi=firma_adi,
+            FirmaTipi=firma_tipi,
+            YetkiliKisi=yetkili_kisi,
+            AktifMi=aktif_mi,
+            Telefon=telefon,
+            Eposta=eposta,
+            WebSitesi=web_sitesi,
+            Adres=adres,
+            VergiNumarasi=vergi_numarasi,
+            VergiDairesi=vergi_dairesi,
+            ParaBirimi=para_birimi,
+            Notlar=notlar
+        )
+
+        try:
+            firma.save()
+            messages.success(
+    request, f'Cari "{firma_adi}" başarıyla oluşturuldu.')
+            return redirect('firma_detail', pk=firma.id)
+        except Exception as e:
+            messages.error(
+    request,
+    f'Cari oluşturulurken hata oluştu: {
+        str(e)}')
+
+    # Display empty form
+    return render(request, 'sefer_app/firma_form.html')
+
+
+def firma_update(request, pk):
+    """Update an existing company."""
+    firma = get_object_or_404(Firmalar, pk=pk)
+
+    if request.method == 'POST':
+        # Process form data
+        firma.FirmaAdi = request.POST.get('firma_adi')
+        firma.FirmaTipi = request.POST.get('firma_tipi')
+        firma.YetkiliKisi = request.POST.get('yetkili_kisi')
+        firma.AktifMi = request.POST.get('aktif_mi') == 'True'
+        firma.Telefon = request.POST.get('telefon')
+        firma.Eposta = request.POST.get('eposta')
+        firma.WebSitesi = request.POST.get('web_sitesi')
+        firma.Adres = request.POST.get('adres')
+        firma.VergiNumarasi = request.POST.get('vergi_numarasi')
+        firma.VergiDairesi = request.POST.get('vergi_dairesi')
+        firma.ParaBirimi = request.POST.get('para_birimi')
+        firma.Notlar = request.POST.get('notlar')
+
+        # Basic validation
+        if not firma.FirmaAdi or not firma.FirmaTipi:
+            messages.error(request, 'Cari adı ve tipi zorunludur.')
+            return render(request,
+    'sefer_app/firma_form.html',
+     {'firma': firma})
+
+        try:
+            firma.save()
+            messages.success(
+    request, f'Cari "{
+        firma.FirmaAdi}" başarıyla güncellendi.')
+            return redirect('firma_detail', pk=firma.id)
+        except Exception as e:
+            messages.error(
+    request,
+    f'Cari güncellenirken hata oluştu: {
+        str(e)}')
+
+    # Calculate financial summary for display
+    faturalar = Faturalar.objects.filter(Firma=firma)
+    alis_toplam = faturalar.filter(FaturaTipi='Alış').aggregate(
+        Sum('ToplamTutar'))['ToplamTutar__sum'] or Decimal('0.00')
+    satis_toplam = faturalar.filter(FaturaTipi='Satış').aggregate(
+        Sum('ToplamTutar'))['ToplamTutar__sum'] or Decimal('0.00')
+    bakiye = satis_toplam - alis_toplam
+
+    # Display form with existing data
+    context = {
+        'firma': firma,
+        'alis_toplam': alis_toplam,
+        'satis_toplam': satis_toplam,
+        'bakiye': bakiye,
+    }
+    return render(request, 'sefer_app/firma_form.html', context)
+
+
+def firma_delete(request, pk):
+    """Delete a company."""
+    firma = get_object_or_404(Firmalar, pk=pk)
+
+    # Check if company has related records
+    has_seferler = Seferler.objects.filter(firma=firma).exists()
+    has_faturalar = Faturalar.objects.filter(Firma=firma).exists()
+
+    if request.method == 'POST':
+        if 'confirm_delete' in request.POST:
+            firma_adi = firma.FirmaAdi
+
+            try:
+                firma.delete()
+                messages.success(
+    request, f'Cari "{firma_adi}" başarıyla silindi.')
+                return redirect('firma_list')
+            except Exception as e:
+                messages.error(
+    request,
+    f'Cari silinirken hata oluştu: {
+        str(e)}')
+                return redirect('firma_detail', pk=pk)
+        else:
+            return redirect('firma_detail', pk=pk)
+
+    context = {
+        'firma': firma,
+        'has_related_records': has_seferler or has_faturalar,
+    }
+    return render(request, 'sefer_app/firma_delete.html', context)
+
+# Faturalar (Invoices) Views
+
+
+def fatura_list(request):
+    """List all invoices with filtering options."""
+    # Get all companies for filtering dropdown
+    firmalar = Firmalar.objects.all().order_by('FirmaAdi')
+
+    # Apply filters if provided
+    fatura_tipi = request.GET.get('fatura_tipi', '')
+    firma_id = request.GET.get('firma', '')
+    baslangic_tarihi = request.GET.get('baslangic_tarihi', '')
+    bitis_tarihi = request.GET.get('bitis_tarihi', '')
+
+    # Base queryset
+    faturalar = Faturalar.objects.all().order_by('-FaturaTarihi')
+
+    # Apply filters
+    if fatura_tipi:
+        faturalar = faturalar.filter(FaturaTipi=fatura_tipi)
+
+    if firma_id:
+        faturalar = faturalar.filter(Firma_id=firma_id)
+
+    if baslangic_tarihi:
+        faturalar = faturalar.filter(FaturaTarihi__gte=baslangic_tarihi)
+
+    if bitis_tarihi:
+        faturalar = faturalar.filter(FaturaTarihi__lte=bitis_tarihi)
+
+    # Calculate summary statistics
+    alis_faturalar = faturalar.filter(FaturaTipi='Alış')
+    satis_faturalar = faturalar.filter(FaturaTipi='Satış')
+    nakliye_faturalar = faturalar.filter(FaturaTipi='Nakliye')
+
+    alis_fatura_sayisi = alis_faturalar.count()
+    satis_fatura_sayisi = satis_faturalar.count()
+    nakliye_fatura_sayisi = nakliye_faturalar.count()
+    toplam_fatura_sayisi = faturalar.count()
+
+    alis_fatura_toplam_eur = alis_faturalar.aggregate(
+        Sum('ToplamTutar'))['ToplamTutar__sum'] or 0
+    satis_fatura_toplam_eur = satis_faturalar.aggregate(
+        Sum('ToplamTutar'))['ToplamTutar__sum'] or 0
+    nakliye_fatura_toplam_eur = nakliye_faturalar.aggregate(Sum('ToplamTutar'))[
+                                                            'ToplamTutar__sum'] or 0
+    toplam_fatura_tutar_eur = faturalar.aggregate(
+        Sum('ToplamTutar'))['ToplamTutar__sum'] or 0
+
+    # Payment status statistics for chart
+    odenen_sayi = faturalar.filter(OdemeDurumu='Ödendi').count()
+    kismi_odenen_sayi = faturalar.filter(OdemeDurumu='Kısmi Ödeme').count()
+    odenmemis_sayi = faturalar.filter(OdemeDurumu='Ödenmedi').count()
+
+    context = {
+        'faturalar': faturalar,
+        'firmalar': firmalar,
+        'alis_fatura_sayisi': alis_fatura_sayisi,
+        'satis_fatura_sayisi': satis_fatura_sayisi,
+        'nakliye_fatura_sayisi': nakliye_fatura_sayisi,
+        'toplam_fatura_sayisi': toplam_fatura_sayisi,
+        'alis_fatura_toplam_eur': alis_fatura_toplam_eur,
+        'satis_fatura_toplam_eur': satis_fatura_toplam_eur,
+        'nakliye_fatura_toplam_eur': nakliye_fatura_toplam_eur,
+        'toplam_fatura_tutar_eur': toplam_fatura_tutar_eur,
+        'odenen_sayi': odenen_sayi,
+        'kismi_odenen_sayi': kismi_odenen_sayi,
+        'odenmemis_sayi': odenmemis_sayi,
+    }
+
+    return render(request, 'sefer_app/fatura_list.html', context)
+
+
+def fatura_detail(request, pk):
+    """Display detailed information about a specific invoice."""
+    fatura = get_object_or_404(Faturalar, pk=pk)
+
+    # Ürünleri doğrudan SQL ile alıyoruz, ORM ile ilgili sorunları aşmak için
+    urunler = []
+    try:
+        with connection.cursor() as cursor:
+            # Invoice products
+            cursor.execute(
+    "SELECT * FROM sefer_app_urunler WHERE Fatura_id = %s", [pk])
+            columns = [col[0] for col in cursor.description]
+            raw_urunler = [dict(zip(columns, row))
+                                for row in cursor.fetchall()]
+
+            # Debug info
+            print(f"SQL ile bulunan ürün sayısı: {len(raw_urunler)}")
+
+            # Standardize field names
+            for urun in raw_urunler:
+                urun_dict = dict(urun)
+
+                # Make sure either UrunHizmetAdi or Urun is available
+                if 'UrunHizmetAdi' in urun_dict and not urun_dict.get('Urun'):
+                    urun_dict['Urun'] = urun_dict['UrunHizmetAdi']
+                elif 'Urun' in urun_dict and not urun_dict.get('UrunHizmetAdi'):
+                    urun_dict['UrunHizmetAdi'] = urun_dict['Urun']
+
+                # Make sure either KDVOrani or KDV is available
+                if 'KDVOrani' in urun_dict and not urun_dict.get('KDV'):
+                    urun_dict['KDV'] = urun_dict['KDVOrani']
+                elif 'KDV' in urun_dict and not urun_dict.get('KDVOrani'):
+                    urun_dict['KDVOrani'] = urun_dict['KDV']
+
+                urunler.append(urun_dict)
+    except Exception as e:
+        print(f"Ürünleri alma hatası: {str(e)}")
+
+    # Check if FaturaOdeme table exists
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='sefer_app_faturaodeme'")
+            table_exists = cursor.fetchone() is not None
+
+        if table_exists:
+            odemeler = FaturaOdeme.objects.filter(
+                Fatura=fatura).order_by('-OdemeTarihi')
+        else:
+            odemeler = []
+    except Exception as e:
+        print(f"Ödeme bilgisi alma hatası: {str(e)}")
+        odemeler = []
+
+    # Calculate payment percentage
+    try:
+        if fatura.ToplamTutar and fatura.ToplamTutar > 0:
+            odeme_yuzdesi = int(
+    (fatura.OdenenTutar / fatura.ToplamTutar) * 100)
+        else:
+            odeme_yuzdesi = 0
+    except Exception as e:
+        print(f"Ödeme yüzdesi hesaplama hatası: {str(e)}")
+        odeme_yuzdesi = 0
+
+    # Calculate remaining amount
+    try:
+        kalan_tutar = fatura.ToplamTutar - fatura.OdenenTutar
+    except Exception as e:
+        print(f"Kalan tutar hesaplama hatası: {str(e)}")
+        kalan_tutar = 0
+
+    # Get other invoices from the same company
+    try:
+        diger_faturalar = Faturalar.objects.filter(Firma=fatura.Firma).exclude(
+            id=fatura.id).order_by('-FaturaTarihi')[:5]
+    except Exception as e:
+        print(f"Diğer faturaları alma hatası: {str(e)}")
+        diger_faturalar = []
+
+    context = {
+        'fatura': fatura,
+        'urunler': urunler,
+        'odemeler': odemeler,
+        'odeme_yuzdesi': odeme_yuzdesi,
+        'kalan_tutar': kalan_tutar,
+        'diger_faturalar': diger_faturalar,
+    }
+    return render(request, 'sefer_app/fatura_detail.html', context)
+
+
+def fatura_create(request):
+    """Create a new invoice."""
+    # Get all companies and trips for select options
+    firmalar = Firmalar.objects.all().order_by('FirmaAdi')
+    seferler = Seferler.objects.all().order_by('-cikis_tarihi')
+
+    # Generate default fatura number in FYYYYAAGGX format
+    today = datetime.now()
+    date_part = f"F{today.year}{today.month:02d}{today.day:02d}"
+
+    # Get the last invoice number with today's date pattern to determine
+    # sequential number
+    last_fatura = Faturalar.objects.filter(
+    FaturaNo__startswith=date_part).order_by('-FaturaNo').first()
+
+    if last_fatura:
+        # Extract the last sequence number and increment
+        try:
+            # Daha güvenli bir yöntem - tarih kısmını çıkarıp kalan kısmı
+            # sayıya dönüştür
+            seq_part = last_fatura.FaturaNo[len(date_part):]
+            if seq_part.isdigit():
+                last_seq = int(seq_part)
+                default_fatura_no = f"{date_part}{last_seq + 1}"
+            else:
+                default_fatura_no = f"{date_part}1"
+        except (ValueError, IndexError):
+            default_fatura_no = f"{date_part}1"
+    else:
+        # First invoice of the day
+        default_fatura_no = f"{date_part}1"
+
+    if request.method == 'POST':
+        # Get form data
+        fatura_tipi = request.POST.get('fatura_tipi')
+        firma_id = request.POST.get('firma')
+        fatura_no = request.POST.get('fatura_no')
+
+        # Kontrol et - aynı fatura numarası var mı?
+        if Faturalar.objects.filter(FaturaNo=fatura_no).exists():
+            messages.error(
+    request,
+     f"'{fatura_no}' numaralı fatura zaten var. Lütfen farklı bir numara girin.")
+            context = {
+                'firmalar': firmalar,
+                'seferler': seferler,
+                'default_fatura_no': default_fatura_no,
+            }
+            return render(request, 'sefer_app/fatura_form.html', context)
+
+        fatura_tarihi = request.POST.get('fatura_tarihi')
+        vade_tarihi = request.POST.get('vade_tarihi', None)
+        ilgili_sefer_id = request.POST.get('ilgili_sefer')
+        aciklama = request.POST.get('aciklama', '')
+        notlar = request.POST.get('notlar', '')
+
+        try:
+            # Decimal değerleri güvenli şekilde dönüştür
+            def safe_decimal(value, default=0):
+                if not value:
+                    return Decimal(default)
+                # Değeri temizle ve düzgün işle
+                try:
+                    # Önce sayısal değeri temizle
+                    clean_value = value.strip()
+
+                    # Türkçe format kontrolü (1.234,56 formatı)
+                    if ',' in clean_value and '.' in clean_value and clean_value.rindex(
+                        '.') < clean_value.rindex(','):
+                        # Türkçe format - önce binlik ayırıcıları kaldır, sonra
+                        # virgülü noktaya çevir
+                        clean_value = clean_value.replace(
+                            '.', '').replace(',', '.')
+                    elif ',' in clean_value and '.' not in clean_value:
+                        # Sadece virgül var - virgülü noktaya çevir
+                        clean_value = clean_value.replace(',', '.')
+                    # Diğer durumlarda (1,234.56 veya 1234.56) herhangi bir
+                    # değişiklik yapma
+
+                    print(f"Decimal dönüşümü: {value} -> {clean_value}")
+                    return Decimal(clean_value)
+                except Exception as e:
+                    print(f"Decimal dönüşüm hatası: {value} - {str(e)}")
+                    return Decimal(default)
+
+            ara_toplam_str = request.POST.get('ara_toplam', '0')
+            kdv_orani_str = request.POST.get('kdv_orani', '0')
+            genel_toplam_str = request.POST.get('genel_toplam', '0')
+            odenen_tutar_str = request.POST.get('odenen_tutar', '0')
+
+            ara_toplam = safe_decimal(ara_toplam_str)
+            kdv_orani = safe_decimal(kdv_orani_str)
+            genel_toplam = safe_decimal(genel_toplam_str)
+            odenen_tutar = safe_decimal(odenen_tutar_str)
+
+            print(
+    f"Fiyat bilgileri: AraToplam={ara_toplam}, KDV={kdv_orani}, GenelToplam={genel_toplam}")
+        except Exception as e:
+            messages.error(
+    request,
+    f"Fiyat bilgilerinde dönüşüm hatası: {
+        str(e)}")
+            context = {
+                'firmalar': firmalar,
+                'seferler': seferler,
+                'default_fatura_no': default_fatura_no,
+            }
+            return render(request, 'sefer_app/fatura_form.html', context)
+
+        odeme_durumu = request.POST.get('odeme_durumu', 'Ödenmedi')
+
+        # Doğrudan SQL ile fatura oluştur - model ve veritabanı uyumsuzluğunu
+        # aşmak için
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO sefer_app_faturalar (
+                        FaturaTipi, Firma_id, FaturaNo, FaturaTarihi, VadeTarihi,
+                        ParaBirimi, AraToplam, KDVOrani, ToplamTutar, OdenenTutar,
+                        OdemeDurumu, Aciklama, Notlar, Sefer_id, KurEUR, ToplamEUR
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, [
+                    fatura_tipi, firma_id, fatura_no, fatura_tarihi, vade_tarihi,
+                    'EUR', ara_toplam, kdv_orani, genel_toplam, odenen_tutar,
+                    odeme_durumu, aciklama, notlar, ilgili_sefer_id if ilgili_sefer_id else None,
+                    1.0, genel_toplam  # KurEUR değeri 1.0, ToplamEUR değeri genel_toplam ile aynı
+                ])
+
+                # SQLite'da son eklenen kaydın ID'sini al
+                fatura_id = cursor.lastrowid
+        except Exception as e:
+            error_message = f"Fatura oluşturulurken hata oluştu: {str(e)}"
+            print(error_message)
+            messages.error(request, error_message)
+            context = {
+                'firmalar': firmalar,
+                'seferler': seferler,
+                'default_fatura_no': default_fatura_no,
+            }
+            return render(request, 'sefer_app/fatura_form.html', context)
+
+        # Get product data from form (arrays)
+        urunler = request.POST.getlist('urun[]')
+        aciklamalar = request.POST.getlist('aciklama[]')
+        miktarlar = request.POST.getlist('miktar[]')
+        birimler = request.POST.getlist('birim[]')
+        birim_fiyatlar = request.POST.getlist('birim_fiyat[]')
+        kdv_oranlari = request.POST.getlist('kdv[]')
+        toplamlar = request.POST.getlist('toplam[]')
+
+        # Create invoice items - raw SQL kullanarak urunler ekleme
+        for i in range(len(urunler)):
+            if urunler[i]:  # Skip empty items
+                try:
+                    print(
+    f"Ürün ekleniyor: {
+        urunler[i]}, Açıklama: {
+            aciklamalar[i] if i < len(aciklamalar) else ''}")
+
+                        # Güvenli decimal dönüşümleri
+                        miktar_str = miktarlar[i] if i < len(
+                            miktarlar) else '0'
+                        birim_fiyat_str = birim_fiyatlar[i] if i < len(
+                            birim_fiyatlar) else '0'
+                        kdv_oran_str = kdv_oranlari[i] if i < len(
+                            kdv_oranlari) else '0'
+                        toplam_str = toplamlar[i] if i < len(
+                            toplamlar) else '0'
+
+                        print(
+    f"Ürün #{
+        i +
+         1} değerleri: Miktar={miktar_str}, BirimFiyat={birim_fiyat_str}, KDV={kdv_oran_str}, Toplam={toplam_str}")
+
+                        miktar = safe_decimal(miktar_str)
+                        birim_fiyat = safe_decimal(birim_fiyat_str)
+                        kdv_oran = safe_decimal(kdv_oran_str)
+                        toplam = safe_decimal(toplam_str)
+
+                        # Veritabanındaki alan isimleri farklı olabilir, bu
+                        # yüzden raw SQL kullanıyoruz
+                        with connection.cursor() as cursor:
+                            cursor.execute("""
+                                INSERT INTO sefer_app_urunler (
+                                    Fatura_id, UrunHizmetAdi, Miktar,
+                                    Birim, BirimFiyat, KDVOrani, Toplam
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            """, [
+                                fatura_id,
+                                urunler[i],
+                                miktar,
+                                birimler[i] if i < len(birimler) else 'Adet',
+                                birim_fiyat,
+                                kdv_oran,
+                                toplam
+                            ])
+
+                            urun_id = cursor.lastrowid
+                            print(f"Ürün başarıyla eklendi. ID: {urun_id}")
+                except Exception as e:
+                    print(f"Ürün eklenirken hata oluştu: {str(e)}")
+                    # Hatayı log et ama devam et
+                    continue
+
+        # Create payment record if paid
+        if odeme_durumu != 'Ödenmedi' and odenen_tutar > 0:
+                try:
+                    # Ödeme için kasa seçimi
+                    odeme_kasa_id = request.POST.get('odeme_kasa')
+
+                    if odeme_kasa_id:
+                        odeme_kasa = Kasalar.objects.get(pk=odeme_kasa_id)
+
+                        FaturaOdeme.objects.create(
+                            Fatura_id=fatura_id,
+                            OdemeTarihi=fatura_tarihi,
+                            Tutar=odenen_tutar,
+                            OdemeTipi='Nakit',
+                            Kasa=odeme_kasa,
+                            Aciklama='İlk ödeme'
+                        )
+                    else:
+                        messages.warning(
+    request, 'Ödeme tutarı girildi ancak kasa seçilmediği için ödeme kaydedilmedi.')
+                except Exception as e:
+                    print(f"Ödeme kaydı oluşturma hatası: {str(e)}")
+                    messages.error(
+    request,
+    f"Ödeme kaydı oluşturulurken hata: {
+        str(e)}")
+
+            # Eğer nakliye faturasıysa ve bir sefere bağlıysa, seferin ücretini
+            # güncelle
+            if fatura_tipi == 'Nakliye' and ilgili_sefer_id:
+                try:
+                    # TÜM ilgili nakliye faturalarının toplamını al
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT SUM(ToplamTutar) 
+                            FROM sefer_app_faturalar 
+                            WHERE Sefer_id = %s AND FaturaTipi = 'Nakliye'
+                        """, [ilgili_sefer_id])
+                        toplam_nakliye = cursor.fetchone()[0]
+                        
+                    if toplam_nakliye:
+                        sefer = Seferler.objects.get(id=ilgili_sefer_id)
+                        sefer.ucret = toplam_nakliye
+                        sefer.save()
+                        print(f"Sefer {ilgili_sefer_id} ücreti {toplam_nakliye} EUR olarak güncellendi")
+                except Exception as e:
+                    print(f"Sefer güncelleme hatası: {str(e)}")
+        
+        messages.success(request, 'Fatura başarıyla oluşturuldu.')
+        return redirect('fatura_detail', pk=fatura_id)
+            
+        except Exception as e:
+            error_message = f"Fatura oluşturulurken hata oluştu: {str(e)}"
+            print(error_message)
+            messages.error(request, error_message)
+            context = {
+                'firmalar': firmalar,
+                'seferler': seferler,
+                'default_fatura_no': default_fatura_no,
+            }
+            return render(request, 'sefer_app/fatura_form.html', context)
+    
+    context = {
+        'firmalar': firmalar,
+        'seferler': seferler,
+        'default_fatura_no': default_fatura_no,
+    }
+    return render(request, 'sefer_app/fatura_form.html', context)
+
+def fatura_update(request, pk):
+    """Update an existing invoice."""
+    fatura = get_object_or_404(Faturalar, pk=pk)
+    firmalar = Firmalar.objects.all().order_by('FirmaAdi')
+    seferler = Seferler.objects.all().order_by('-cikis_tarihi')
+    
+    # Faturaya ait ürünleri al
+    try:
+        urunler = list(Urunler.objects.filter(Fatura_id=pk))
+        print(f"ORM ile {len(urunler)} ürün bulundu")
+    except Exception as e:
+        print(f"Ürünleri alma hatası: {str(e)}")
+        urunler = []
+        
+        # ORM başarısız olduysa SQL ile dene
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM sefer_app_urunler WHERE Fatura_id = %s", [pk])
+                columns = [col[0] for col in cursor.description]
+                urunler = []
+                for row in cursor.fetchall():
+                    urun_dict = dict(zip(columns, row))
+                    urunler.append(urun_dict)
+                print(f"SQL ile {len(urunler)} ürün bulundu")
+        except Exception as e:
+            print(f"SQL ile ürün alma hatası: {str(e)}")
+    
+    if request.method == 'POST':
+        print("Fatura güncelleme POST isteği alındı")
+        
+        # Formdan gelen verileri al
+        try:
+        firma_id = request.POST.get('firma')
+        fatura_no = request.POST.get('fatura_no')
+            fatura_tipi = request.POST.get('fatura_tipi', fatura.FaturaTipi)
+        fatura_tarihi = request.POST.get('fatura_tarihi')
+            vade_tarihi = request.POST.get('vade_tarihi')
+        ilgili_sefer_id = request.POST.get('ilgili_sefer')
+        aciklama = request.POST.get('aciklama', '')
+        notlar = request.POST.get('notlar', '')
+        
+            # Sayısal değerleri dönüştür - daha güvenli yöntemle
+            def safe_decimal(value, default=0):
+                if not value:
+                    return Decimal(default)
+                # Değeri temizle ve düzgün işle
+                try:
+                    # Önce sayısal değeri temizle
+                    clean_value = value.strip()
+                    
+                    # Türkçe format kontrolü (1.234,56 formatı)
+                    if ',' in clean_value and '.' in clean_value and clean_value.rindex('.') < clean_value.rindex(','):
+                        # Türkçe format - önce binlik ayırıcıları kaldır, sonra virgülü noktaya çevir
+                        clean_value = clean_value.replace('.', '').replace(',', '.')
+                    elif ',' in clean_value and '.' not in clean_value:
+                        # Sadece virgül var - virgülü noktaya çevir
+                        clean_value = clean_value.replace(',', '.')
+                    # Diğer durumlarda (1,234.56 veya 1234.56) herhangi bir değişiklik yapma
+                    
+                    print(f"Decimal dönüşümü: {value} -> {clean_value}")
+                    return Decimal(clean_value)
+                except Exception as e:
+                    print(f"Decimal dönüşüm hatası: {value} - {str(e)}")
+                    return Decimal(default)
+            
+            ara_toplam = safe_decimal(request.POST.get('ara_toplam', '0'))
+            kdv_orani = safe_decimal(request.POST.get('kdv_orani', '0'))
+            genel_toplam = safe_decimal(request.POST.get('genel_toplam', '0'))
+            odenen_tutar = safe_decimal(request.POST.get('odenen_tutar', '0'))
+        odeme_durumu = request.POST.get('odeme_durumu', 'Ödenmedi')
+            
+            # Eski değerleri sakla
+            eski_fatura_tipi = fatura.FaturaTipi
+            eski_sefer_id = fatura.Sefer_id if hasattr(fatura, 'Sefer_id') else None
+            
+            print(f"Fatura başlık bilgileri işleniyor: {fatura_no}, {fatura_tipi}, {firma_id}, {ilgili_sefer_id}")
+            print(f"Sayısal değerler: AraToplam={ara_toplam}, KDV={kdv_orani}, Toplam={genel_toplam}")
+            
+            # 1. Adım: Faturayı güncelle
+            try:
+                # Django ORM ile güncelleme yap
+                fatura.Firma_id = firma_id
+                fatura.FaturaNo = fatura_no
+                fatura.FaturaTipi = fatura_tipi
+                fatura.FaturaTarihi = fatura_tarihi
+                fatura.VadeTarihi = vade_tarihi if vade_tarihi else None
+                fatura.AraToplam = ara_toplam
+                fatura.KDVOrani = kdv_orani
+                fatura.ToplamTutar = genel_toplam
+                fatura.OdenenTutar = odenen_tutar
+                fatura.OdemeDurumu = odeme_durumu
+                fatura.Aciklama = aciklama
+                fatura.Notlar = notlar
+                fatura.Sefer_id = ilgili_sefer_id if ilgili_sefer_id else None
+                fatura.KurEUR = Decimal('1.0')
+                fatura.ToplamEUR = genel_toplam
+                
+                fatura.save()
+                print(f"Fatura #{pk} başarıyla güncellendi")
+            except Exception as e:
+                print(f"Fatura güncelleme hatası (ORM): {str(e)}")
+                # ORM başarısız olursa SQL dene
+                try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE sefer_app_faturalar SET
+                                Firma_id = %s, FaturaNo = %s, FaturaTipi = %s, 
+                                FaturaTarihi = %s, VadeTarihi = %s, AraToplam = %s,
+                                KDVOrani = %s, ToplamTutar = %s, OdenenTutar = %s,
+                                OdemeDurumu = %s, Aciklama = %s, Notlar = %s,
+                                Sefer_id = %s, KurEUR = %s, ToplamEUR = %s
+                WHERE id = %s
+            """, [
+                            firma_id, fatura_no, fatura_tipi,
+                            fatura_tarihi, vade_tarihi, ara_toplam,
+                            kdv_orani, genel_toplam, odenen_tutar,
+                odeme_durumu, aciklama, notlar, 
+                            ilgili_sefer_id if ilgili_sefer_id else None, 1.0, genel_toplam,
+                            pk
+                        ])
+                        print(f"Fatura #{pk} SQL ile güncellendi")
+                except Exception as e:
+                    print(f"Fatura güncelleme hatası (SQL): {str(e)}")
+                    messages.error(request, f"Fatura güncellenirken hata oluştu: {str(e)}")
+                    context = {
+                        'fatura': fatura,
+                        'firmalar': firmalar,
+                        'seferler': seferler,
+                        'urunler': urunler,
+                    }
+                    return render(request, 'sefer_app/fatura_form.html', context)
+            
+            # 2. Adım: Sefer ücretlerini güncelle (nakliye faturası ise)
+            # Eski sefer ve yeni sefer farklıysa her ikisinin de ücretlerini güncelle
+            if eski_fatura_tipi == 'Nakliye' and eski_sefer_id and eski_sefer_id != ilgili_sefer_id:
+                try:
+                    # Eski sefere ait nakliye faturalarının toplamını hesapla
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT SUM(ToplamTutar) 
+                            FROM sefer_app_faturalar 
+                            WHERE Sefer_id = %s AND FaturaTipi = 'Nakliye' AND id != %s
+                        """, [eski_sefer_id, pk])
+                        kalan_toplam = cursor.fetchone()[0] or 0
+                        
+                    # Eski seferin ücretini güncelle
+                    eski_sefer = Seferler.objects.get(id=eski_sefer_id)
+                    eski_sefer.ucret = kalan_toplam
+                    eski_sefer.save()
+                    print(f"Eski sefer {eski_sefer_id} ücreti {kalan_toplam} EUR olarak güncellendi")
+                except Exception as e:
+                    print(f"Eski sefer ücret güncelleme hatası: {str(e)}")
+            
+            # Yeni sefer varsa ve fatura tipi nakliye ise, yeni seferin ücretini güncelle
+            if fatura_tipi == 'Nakliye' and ilgili_sefer_id:
+                try:
+                    # Sefer için toplam nakliye tutarını hesapla
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT SUM(ToplamTutar) 
+                            FROM sefer_app_faturalar 
+                            WHERE Sefer_id = %s AND FaturaTipi = 'Nakliye'
+                        """, [ilgili_sefer_id])
+                        toplam_nakliye = cursor.fetchone()[0] or 0
+                    
+                    # Seferin ücretini güncelle
+                    sefer = Seferler.objects.get(id=ilgili_sefer_id)
+                    sefer.ucret = toplam_nakliye
+                    sefer.save()
+                    print(f"Sefer {ilgili_sefer_id} ücreti {toplam_nakliye} EUR olarak güncellendi")
+                except Exception as e:
+                    print(f"Yeni sefer ücret güncelleme hatası: {str(e)}")
+            
+            # 3. Adım: Ürünleri güncelle
+            print("Fatura ürünleri güncelleniyor...")
+            
+            # Mevcut ürünleri sil
+            try:
+                # Önce ORM ile silmeyi dene
+                Urunler.objects.filter(Fatura_id=pk).delete()
+                print(f"Fatura #{pk} ürünleri silindi (ORM)")
+            except Exception as e:
+                print(f"Ürün silme hatası (ORM): {str(e)}")
+                # ORM başarısız olursa SQL dene
+                try:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM sefer_app_urunler WHERE Fatura_id = %s", [pk])
+                        print(f"Fatura #{pk} ürünleri silindi (SQL)")
+                except Exception as e:
+                    print(f"Ürün silme hatası (SQL): {str(e)}")
+        
+            # Formdan ürün verilerini al
+        urunler_data = request.POST.getlist('urun[]')
+        miktarlar = request.POST.getlist('miktar[]')
+        birimler = request.POST.getlist('birim[]')
+        birim_fiyatlar = request.POST.getlist('birim_fiyat[]')
+        kdv_oranlari = request.POST.getlist('kdv[]')
+        toplamlar = request.POST.getlist('toplam[]')
+        
+            print(f"Eklenecek ürün sayısı: {len(urunler_data)}")
+            
+            # Yeni ürünleri ekle
+        for i in range(len(urunler_data)):
+                if not urunler_data[i]:  # Boş ürünleri atla
+                    continue
+                
+                try:
+                    # Değerleri güvenli şekilde dönüştür
+                    miktar_str = miktarlar[i] if i < len(miktarlar) else '0'
+                    birim = birimler[i] if i < len(birimler) else 'Adet'
+                    birim_fiyat_str = birim_fiyatlar[i] if i < len(birim_fiyatlar) else '0'
+                    kdv_oran_str = kdv_oranlari[i] if i < len(kdv_oranlari) else '0'
+                    toplam_str = toplamlar[i] if i < len(toplamlar) else '0'
+                    
+                    print(f"Ürün #{i+1} değerleri: Miktar={miktar_str}, BirimFiyat={birim_fiyat_str}, KDV={kdv_oran_str}, Toplam={toplam_str}")
+                    
+                    miktar = safe_decimal(miktar_str)
+                    birim_fiyat = safe_decimal(birim_fiyat_str)
+                    kdv_oran = safe_decimal(kdv_oran_str)
+                    toplam = safe_decimal(toplam_str)
+                    
+                    print(f"Ürün ekleniyor: {urunler_data[i]}, Miktar: {miktar}, Birim: {birim}, BirimFiyat: {birim_fiyat}, Toplam: {toplam}")
+                    
+                    # Önce ORM ile eklemeyi dene
+                    try:
+                        urun = Urunler(
+                            Fatura_id=pk,
+                            UrunHizmetAdi=urunler_data[i],
+                            Miktar=miktar,
+                            Birim=birim,
+                            BirimFiyat=birim_fiyat,
+                            KDVOrani=kdv_oran,
+                            Toplam=toplam
+                        )
+                        urun.save()
+                        print(f"Ürün başarıyla eklendi (ORM): {urun.id}")
+                    except Exception as e:
+                        print(f"Ürün ekleme hatası (ORM): {str(e)}")
+                        # ORM başarısız olursa SQL dene
+                        try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            INSERT INTO sefer_app_urunler (
+                                Fatura_id, UrunHizmetAdi, Miktar, 
+                                Birim, BirimFiyat, KDVOrani, Toplam
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, [
+                                    pk, urunler_data[i], miktar, 
+                                    birim, birim_fiyat, kdv_oran, toplam
+                                ])
+                                print("Ürün başarıyla eklendi (SQL)")
+                except Exception as e:
+                            print(f"Ürün ekleme hatası (SQL): {str(e)}")
+                except Exception as e:
+                    print(f"Ürün #{i+1} işleme hatası: {str(e)}")
+        
+        messages.success(request, 'Fatura başarıyla güncellendi.')
+            return redirect('fatura_detail', pk=pk)
+            
+        except Exception as e:
+            error_message = f"Fatura güncelleme işleminde hata: {str(e)}"
+            print(error_message)
+            messages.error(request, error_message)
+            context = {
+                'fatura': fatura,
+                'firmalar': firmalar,
+                'seferler': seferler,
+                'urunler': urunler,
+            }
+            return render(request, 'sefer_app/fatura_form.html', context)
+    
+    # GET isteği için form
+    context = {
+        'fatura': fatura,
+        'firmalar': firmalar,
+        'seferler': seferler,
+        'urunler': urunler,
+    }
+    return render(request, 'sefer_app/fatura_form.html', context)
+
+def fatura_delete(request, pk):
+    """Delete an invoice."""
+    try:
+        # Önce faturayı kontrol edelim
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id, FaturaNo, FaturaTipi, Sefer_id FROM sefer_app_faturalar WHERE id = %s", [pk])
+            fatura_data = cursor.fetchone()
+            
+            if not fatura_data:
+                messages.error(request, f"Silinecek fatura bulunamadı (ID: {pk})")
+                return redirect('fatura_list')
+                
+            fatura_id, fatura_no, fatura_tipi, sefer_id = fatura_data
+    except Exception as e:
+        messages.error(request, f"Fatura kontrol edilirken hata oluştu: {str(e)}")
+        return redirect('fatura_list')
+    
+    if request.method == 'POST':
+        try:
+            # Eğer nakliye faturasıysa ve bir sefere bağlıysa, seferin ücretini güncelle
+            if fatura_tipi == 'Nakliye' and sefer_id:
+                try:
+                    # Diğer nakliye faturalarının toplamını hesapla
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT SUM(ToplamTutar) 
+                            FROM sefer_app_faturalar 
+                            WHERE Sefer_id = %s AND FaturaTipi = 'Nakliye' AND id != %s
+                        """, [sefer_id, pk])
+                        diger_toplam = cursor.fetchone()[0] or 0
+                    
+                    # Sefer ücretini güncelle
+                    sefer = Seferler.objects.get(id=sefer_id)
+                    sefer.ucret = diger_toplam
+                    sefer.save()
+                    print(f"Sefer {sefer_id} ücreti {diger_toplam} EUR olarak güncellendi çünkü nakliye faturası silindi")
+                except Exception as e:
+                    print(f"Sefer güncelleme hatası: {str(e)}")
+            
+            # Önce ilişkili ürünleri silelim
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM sefer_app_urunler WHERE Fatura_id = %s", [pk])
+                print(f"Fatura {pk} için ürünler silindi")
+            
+            # Sonra ilişkili ödemeleri silelim (tablo varsa)
+            with connection.cursor() as cursor:
+                # Tablonun var olup olmadığını kontrol et
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sefer_app_faturaodeme'")
+                table_exists = cursor.fetchone() is not None
+                
+                if table_exists:
+                    cursor.execute("DELETE FROM sefer_app_faturaodeme WHERE Fatura_id = %s", [pk])
+                    print(f"Fatura {pk} için ödemeler silindi")
+            
+            # Son olarak faturayı silelim
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM sefer_app_faturalar WHERE id = %s", [pk])
+                print(f"Fatura {pk} silindi")
+            
+            messages.success(request, f'"{fatura_no}" numaralı fatura başarıyla silindi.')
+        return redirect('fatura_list')
+        except Exception as e:
+            error_message = f"Fatura silinemedi: {str(e)}"
+            print(error_message)
+            messages.error(request, error_message)
+            # GET isteği gibi onay sayfasını tekrar göster
+            return render(request, 'sefer_app/fatura_delete.html', {
+                'fatura': {
+                    'id': fatura_id,
+                    'FaturaNo': fatura_no
+                }
+            })
+    
+    # Fatura detaylarını alalım
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT f.*, fr.FirmaAdi 
+                FROM sefer_app_faturalar f 
+                LEFT JOIN sefer_app_firmalar fr ON f.Firma_id = fr.id 
+                WHERE f.id = %s
+            """, [pk])
+            
+            columns = [col[0] for col in cursor.description]
+            fatura_data = cursor.fetchone()
+            
+            if not fatura_data:
+                messages.error(request, f"Silinecek fatura bulunamadı (ID: {pk})")
+                return redirect('fatura_list')
+                
+            fatura = dict(zip(columns, fatura_data))
+            fatura['Firma'] = {'FirmaAdi': fatura.get('FirmaAdi')}
+            
+            # Tarihleri datetime formatına çevirelim
+            from datetime import datetime
+            if fatura.get('FaturaTarihi'):
+                try:
+                    fatura['FaturaTarihi'] = datetime.strptime(fatura['FaturaTarihi'], '%Y-%m-%d')
+                except:
+                    pass
+    except Exception as e:
+        messages.error(request, f"Fatura bilgileri alınırken hata oluştu: {str(e)}")
+        return redirect('fatura_list')
+    
+    # GET isteği için onay sayfası göster
+    return render(request, 'sefer_app/fatura_delete.html', {'fatura': fatura})
+
+def odeme_ekle(request, fatura_id):
+    """Add a payment to an invoice."""
+    fatura = get_object_or_404(Faturalar, pk=fatura_id)
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    if request.method == 'POST':
+        odeme_tarihi = request.POST.get('odeme_tarihi')
+        odeme_tutar = Decimal(request.POST.get('odeme_tutar', '0'))
+        odeme_tipi = request.POST.get('odeme_tipi')
+        odeme_aciklama = request.POST.get('odeme_aciklama', '')
+        kasa_id = request.POST.get('kasa')
+        
+        # Kasa kontrolü
+        if not kasa_id:
+            messages.error(request, 'Ödeme için kasa seçimi zorunludur.')
+            return redirect('fatura_detail', pk=fatura_id)
+        
+        # Create the payment
+        try:
+            kasa = Kasalar.objects.get(pk=kasa_id)
+            
+        FaturaOdeme.objects.create(
+            Fatura=fatura,
+            OdemeTarihi=odeme_tarihi,
+            Tutar=odeme_tutar,
+            OdemeTipi=odeme_tipi,
+                Kasa=kasa,
+            Aciklama=odeme_aciklama
+        )
+        
+        # Update the invoice payment status
+        yeni_odenen_tutar = fatura.OdenenTutar + odeme_tutar
+        
+        # Update payment status
+        if yeni_odenen_tutar >= fatura.ToplamTutar:
+            fatura.OdemeDurumu = 'Ödendi'
+            fatura.OdenenTutar = fatura.ToplamTutar  # Ensure not to exceed total
+        elif yeni_odenen_tutar > 0:
+            fatura.OdemeDurumu = 'Kısmi Ödeme'
+            fatura.OdenenTutar = yeni_odenen_tutar
+        
+        fatura.save()
+        
+            messages.success(request, f'Ödeme başarıyla eklendi. {odeme_tutar} {fatura.ParaBirimi}, {kasa.kasa_adi} kasasından.')
+        except Exception as e:
+            messages.error(request, f'Ödeme eklenirken hata oluştu: {str(e)}')
+    
+    return redirect('fatura_detail', pk=fatura_id)
+
+# Kasalar (Cash Registers) Views
+def kasa_list(request):
+    """List all cash registers with filter options."""
+    # Apply filters if provided
+    kasa_tipi = request.GET.get('kasa_tipi', '')
+    para_birimi = request.GET.get('para_birimi', '')
+    arama = request.GET.get('arama', '')
+    
+    # Base queryset
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    # Apply filters
+    if kasa_tipi:
+        kasalar = kasalar.filter(kasa_tipi=kasa_tipi)
+    
+    if para_birimi:
+        kasalar = kasalar.filter(para_birimi=para_birimi)
+    
+    if arama:
+        kasalar = kasalar.filter(kasa_adi__icontains=arama)
+    
+    context = {
+        'kasalar': kasalar,
+        'kasa_tipi_filtre': kasa_tipi,
+        'para_birimi_filtre': para_birimi,
+        'arama_filtre': arama,
+    }
+    return render(request, 'sefer_app/kasa_list.html', context)
+
+def kasa_detail(request, pk):
+    """Display detailed information about a specific cash register."""
+    kasa = get_object_or_404(Kasalar, pk=pk)
+    
+    # Sefer masrafları
+    sefer_masraflar = SeferMasraf.objects.filter(Kasa=kasa).order_by('-Tarih')
+    
+    # Genel kasa hareketleri
+    genel_hareketler = GenelKasaHareketi.objects.filter(kasa=kasa).order_by('-tarih')
+    
+    # Fatura ödemeleri
+    fatura_odemeleri = FaturaOdeme.objects.filter(Kasa=kasa).order_by('-OdemeTarihi')
+    
+    # Gelen transferler
+    gelen_transferler = KasaTransfer.objects.filter(hedef_kasa=kasa).order_by('-tarih')
+    
+    # Giden transferler
+    giden_transferler = KasaTransfer.objects.filter(kaynak_kasa=kasa).order_by('-tarih')
+    
+    # Hesapla toplam masraf
+    toplam_sefer_masraf = sefer_masraflar.aggregate(Sum('Tutar'))['Tutar__sum'] or Decimal('0')
+    toplam_genel_gider = genel_hareketler.filter(hareket_tipi='Gider').aggregate(Sum('tutar'))['tutar__sum'] or Decimal('0')
+    toplam_genel_gelir = genel_hareketler.filter(hareket_tipi='Gelir').aggregate(Sum('tutar'))['tutar__sum'] or Decimal('0')
+    toplam_fatura_odeme = fatura_odemeleri.aggregate(Sum('Tutar'))['Tutar__sum'] or Decimal('0')
+    toplam_gelen_transfer = gelen_transferler.aggregate(Sum('tutar'))['tutar__sum'] or Decimal('0')
+    toplam_giden_transfer = giden_transferler.aggregate(Sum('tutar'))['tutar__sum'] or Decimal('0')
+    
+    # Mevcut bakiye hesapla
+    mevcut_bakiye = (kasa.baslangic_bakiyesi + toplam_genel_gelir + toplam_gelen_transfer) - (toplam_sefer_masraf + toplam_genel_gider + toplam_fatura_odeme + toplam_giden_transfer)
+    
+    # Tüm hareketleri kronolojik sırala
+    tum_hareketler = []
+    
+    # Sefer masraflarını ekle
+    for masraf in sefer_masraflar:
+        tum_hareketler.append({
+            'tarih': masraf.Tarih,
+            'tip': 'Sefer Masrafı',
+            'aciklama': f"{masraf.Sefer} - {masraf.Aciklama}" if masraf.Sefer else masraf.Aciklama,
+            'tutar': -masraf.Tutar,  # Gider olduğu için eksi işareti
+            'referans': masraf.id,
+            'referans_url': reverse('sefer_detail', args=[masraf.Sefer.id]) if masraf.Sefer else None
+        })
+    
+    # Genel hareketleri ekle
+    for hareket in genel_hareketler:
+        tum_hareketler.append({
+            'tarih': hareket.tarih,
+            'tip': f"Genel {hareket.hareket_tipi}",
+            'aciklama': f"{hareket.kategori} - {hareket.aciklama}",
+            'tutar': hareket.tutar if hareket.hareket_tipi == 'Gelir' else -hareket.tutar,
+            'referans': hareket.id,
+            'referans_url': None
+        })
+    
+    # Fatura ödemelerini ekle
+    for odeme in fatura_odemeleri:
+        tum_hareketler.append({
+            'tarih': odeme.OdemeTarihi,
+            'tip': 'Fatura Ödemesi',
+            'aciklama': f"Fatura #{odeme.Fatura.FaturaNo} - {odeme.Aciklama}",
+            'tutar': -odeme.Tutar,  # Gider olduğu için eksi işareti
+            'referans': odeme.id,
+            'referans_url': reverse('fatura_detail', args=[odeme.Fatura.id])
+        })
+    
+    # Transferleri ekle
+    for transfer in gelen_transferler:
+        tum_hareketler.append({
+            'tarih': transfer.tarih,
+            'tip': 'Transfer (Giriş)',
+            'aciklama': f"{transfer.kaynak_kasa} kasasından transfer - {transfer.aciklama}",
+            'tutar': transfer.tutar,
+            'referans': transfer.id,
+            'referans_url': None
+        })
+    
+    for transfer in giden_transferler:
+        tum_hareketler.append({
+            'tarih': transfer.tarih,
+            'tip': 'Transfer (Çıkış)',
+            'aciklama': f"{transfer.hedef_kasa} kasasına transfer - {transfer.aciklama}",
+            'tutar': -transfer.tutar,
+            'referans': transfer.id,
+            'referans_url': None
+        })
+    
+    # Tarihe göre sırala (en yeniden en eskiye)
+    tum_hareketler.sort(key=lambda x: x['tarih'], reverse=True)
+    
+    context = {
+        'kasa': kasa,
+        'sefer_masraflar': sefer_masraflar,
+        'genel_hareketler': genel_hareketler,
+        'fatura_odemeleri': fatura_odemeleri,
+        'gelen_transferler': gelen_transferler,
+        'giden_transferler': giden_transferler,
+        'toplam_sefer_masraf': toplam_sefer_masraf,
+        'toplam_genel_gider': toplam_genel_gider,
+        'toplam_genel_gelir': toplam_genel_gelir,
+        'toplam_fatura_odeme': toplam_fatura_odeme,
+        'toplam_gelen_transfer': toplam_gelen_transfer,
+        'toplam_giden_transfer': toplam_giden_transfer,
+        'mevcut_bakiye': mevcut_bakiye,
+        'tum_hareketler': tum_hareketler,
+    }
+    return render(request, 'sefer_app/kasa_detail.html', context)
+
+def kasa_create(request):
+    """Create a new cash register."""
+    if request.method == 'POST':
+        # Process form data and create cash register
+        kasa_adi = request.POST.get('kasa_adi')
+        kasa_tipi = request.POST.get('kasa_tipi')
+        para_birimi = request.POST.get('para_birimi')
+        baslangic_bakiyesi = request.POST.get('baslangic_bakiyesi')
+        aciklama = request.POST.get('aciklama', '')
+        
+        # Basic validation
+        if not kasa_adi or not kasa_tipi or not para_birimi or not baslangic_bakiyesi:
+            messages.error(request, 'Lütfen tüm zorunlu alanları doldurun.')
+            return render(request, 'sefer_app/kasa_form.html')
+        
+        # Create new cash register
+        try:
+            kasa = Kasalar(
+                kasa_adi=kasa_adi,
+                kasa_tipi=kasa_tipi,
+                para_birimi=para_birimi,
+                baslangic_bakiyesi=Decimal(baslangic_bakiyesi),
+                aciklama=aciklama
+            )
+            kasa.save()
+            messages.success(request, f'Kasa "{kasa_adi}" başarıyla oluşturuldu.')
+            return redirect('kasa_detail', pk=kasa.id)
+        except Exception as e:
+            messages.error(request, f'Kasa oluşturulurken hata oluştu: {str(e)}')
+    
+    # Display empty form
+    return render(request, 'sefer_app/kasa_form.html')
+
+def kasa_update(request, pk):
+    """Update an existing cash register."""
+    kasa = get_object_or_404(Kasalar, pk=pk)
+    
+    if request.method == 'POST':
+        # Process form data
+        kasa.kasa_adi = request.POST.get('kasa_adi')
+        kasa.kasa_tipi = request.POST.get('kasa_tipi')
+        kasa.para_birimi = request.POST.get('para_birimi')
+        
+        baslangic_bakiyesi = request.POST.get('baslangic_bakiyesi')
+        if baslangic_bakiyesi:
+            kasa.baslangic_bakiyesi = Decimal(baslangic_bakiyesi)
+            
+        kasa.aciklama = request.POST.get('aciklama', '')
+        
+        # Basic validation
+        if not kasa.kasa_adi or not kasa.kasa_tipi or not kasa.para_birimi:
+            messages.error(request, 'Lütfen tüm zorunlu alanları doldurun.')
+            return render(request, 'sefer_app/kasa_form.html', {'kasa': kasa})
+        
+        # Save updated cash register
+        try:
+            kasa.save()
+            messages.success(request, f'Kasa "{kasa.kasa_adi}" başarıyla güncellendi.')
+            return redirect('kasa_detail', pk=kasa.id)
+        except Exception as e:
+            messages.error(request, f'Kasa güncellenirken hata oluştu: {str(e)}')
+    
+    # Display form with cash register data
+    return render(request, 'sefer_app/kasa_form.html', {'kasa': kasa})
+
+def kasa_delete(request, pk):
+    """Delete a cash register."""
+    kasa = get_object_or_404(Kasalar, pk=pk)
+    
+    if request.method == 'POST':
+        # Check if this cash register is used in any expenses
+        related_masraflar = SeferMasraf.objects.filter(Kasa=kasa).exists()
+        related_odemeleri = FaturaOdeme.objects.filter(Kasa=kasa).exists()
+        related_hareketler = GenelKasaHareketi.objects.filter(kasa=kasa).exists()
+        related_transferler = KasaTransfer.objects.filter(kaynak_kasa=kasa).exists() or KasaTransfer.objects.filter(hedef_kasa=kasa).exists()
+        
+        if related_masraflar or related_odemeleri or related_hareketler or related_transferler:
+            messages.error(request, f'Bu kasa bazı işlemlerle ilişkili olduğu için silinemez.')
+            return redirect('kasa_detail', pk=kasa.id)
+        
+        try:
+            kasa_adi = kasa.kasa_adi
+            kasa.delete()
+            messages.success(request, f'Kasa "{kasa_adi}" başarıyla silindi.')
+            return redirect('kasa_list')
+        except Exception as e:
+            messages.error(request, f'Kasa silinirken hata oluştu: {str(e)}')
+            return redirect('kasa_detail', pk=kasa.id)
+    
+    # Display confirmation page
+    return render(request, 'sefer_app/kasa_delete.html', {'kasa': kasa})
+
+def kasa_transfer_create(request):
+    """Create a new transfer between cash registers."""
+    # Get all active cash registers
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    if request.method == 'POST':
+        # Get form data
+        kaynak_kasa_id = request.POST.get('kaynak_kasa')
+        hedef_kasa_id = request.POST.get('hedef_kasa')
+        tarih = request.POST.get('tarih')
+        tutar = request.POST.get('tutar')
+        aciklama = request.POST.get('aciklama', '')
+        
+        # Basic validation
+        if not kaynak_kasa_id or not hedef_kasa_id or not tarih or not tutar:
+            messages.error(request, 'Lütfen tüm zorunlu alanları doldurun.')
+            return render(request, 'sefer_app/kasa_transfer_form.html', {'kasalar': kasalar})
+        
+        if kaynak_kasa_id == hedef_kasa_id:
+            messages.error(request, 'Kaynak ve hedef kasa aynı olamaz.')
+            return render(request, 'sefer_app/kasa_transfer_form.html', {'kasalar': kasalar})
+        
+        # Decimal dönüşümü ve güvenlik kontrolü
+        try:
+            tutar_decimal = Decimal(tutar.replace(',', '.'))
+            if tutar_decimal <= 0:
+                messages.error(request, 'Transfer tutarı sıfırdan büyük olmalıdır.')
+                return render(request, 'sefer_app/kasa_transfer_form.html', {'kasalar': kasalar})
+        except:
+            messages.error(request, 'Geçerli bir transfer tutarı giriniz.')
+            return render(request, 'sefer_app/kasa_transfer_form.html', {'kasalar': kasalar})
+        
+        # Get the cash registers
+        try:
+            kaynak_kasa = Kasalar.objects.get(pk=kaynak_kasa_id)
+            hedef_kasa = Kasalar.objects.get(pk=hedef_kasa_id)
+        except:
+            messages.error(request, 'Geçersiz kasa seçimi.')
+            return render(request, 'sefer_app/kasa_transfer_form.html', {'kasalar': kasalar})
+        
+        # Para birimi kontrolü
+        if kaynak_kasa.para_birimi != hedef_kasa.para_birimi:
+            messages.warning(request, f'Para birimi uyumsuzluğu: {kaynak_kasa.para_birimi} -> {hedef_kasa.para_birimi}. Transfer yapılacak ama döviz çevrimi uygulanmayacak.')
+        
+        # Create the transfer
+        try:
+            transfer = KasaTransfer(
+                kaynak_kasa=kaynak_kasa,
+                hedef_kasa=hedef_kasa,
+                tarih=tarih,
+                tutar=tutar_decimal,
+                aciklama=aciklama
+            )
+            transfer.save()
+            messages.success(request, f'Kasa transferi başarıyla oluşturuldu. {kaynak_kasa.kasa_adi} -> {hedef_kasa.kasa_adi}: {tutar_decimal} {kaynak_kasa.para_birimi}')
+            return redirect('kasa_detail', pk=kaynak_kasa.id)
+        except Exception as e:
+            messages.error(request, f'Transfer oluşturulurken hata oluştu: {str(e)}')
+    
+    # Display empty form
+    today = date.today()
+    context = {
+        'kasalar': kasalar,
+        'today': today,
+    }
+    return render(request, 'sefer_app/kasa_transfer_form.html', context)
+
+def genel_hareket_create(request):
+    """Create a new general cash register transaction."""
+    # Get all active cash registers
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    if request.method == 'POST':
+        # Get form data
+        kasa_id = request.POST.get('kasa')
+        hareket_tipi = request.POST.get('hareket_tipi')
+        kategori = request.POST.get('kategori')
+        tutar = request.POST.get('tutar')
+        tarih = request.POST.get('tarih')
+        belge_no = request.POST.get('belge_no', '')
+        aciklama = request.POST.get('aciklama', '')
+        
+        # Basic validation
+        if not kasa_id or not hareket_tipi or not kategori or not tutar or not tarih:
+            messages.error(request, 'Lütfen tüm zorunlu alanları doldurun.')
+            return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar})
+        
+        # Decimal dönüşümü ve güvenlik kontrolü
+        try:
+            tutar_decimal = Decimal(tutar.replace(',', '.'))
+            if tutar_decimal <= 0:
+                messages.error(request, 'Tutar sıfırdan büyük olmalıdır.')
+                return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar})
+        except:
+            messages.error(request, 'Geçerli bir tutar giriniz.')
+            return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar})
+        
+        # Get the cash register
+        try:
+            kasa = Kasalar.objects.get(pk=kasa_id)
+        except:
+            messages.error(request, 'Geçersiz kasa seçimi.')
+            return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar})
+        
+        # Create the transaction
+        try:
+            hareket = GenelKasaHareketi(
+                kasa=kasa,
+                hareket_tipi=hareket_tipi,
+                kategori=kategori,
+                tutar=tutar_decimal,
+                tarih=tarih,
+                belge_no=belge_no,
+                aciklama=aciklama
+            )
+            hareket.save()
+            messages.success(request, f'Kasa hareketi başarıyla oluşturuldu. {kasa.kasa_adi}: {hareket_tipi} - {tutar_decimal} {kasa.para_birimi}')
+            return redirect('kasa_detail', pk=kasa.id)
+        except Exception as e:
+            messages.error(request, f'Kasa hareketi oluşturulurken hata oluştu: {str(e)}')
+    
+    # Display empty form
+    today = date.today()
+    context = {
+        'kasalar': kasalar,
+        'today': today,
+    }
+    return render(request, 'sefer_app/genel_hareket_form.html', context)
+
+# Araç (Vehicle) Views
+def arac_list(request):
+    """List all vehicles with filtering options."""
+    # Apply filters if provided
+    arac_durumu = request.GET.get('arac_durumu', '')
+    arac_tipi = request.GET.get('arac_tipi', '')
+    arama = request.GET.get('arama', '')
+    
+    # Base queryset
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    
+    # Apply filters
+    if arac_durumu:
+        araclar = araclar.filter(arac_durumu=arac_durumu)
+    
+    if arac_tipi:
+        araclar = araclar.filter(arac_tipi=arac_tipi)
+    
+    if arama:
+        araclar = araclar.filter(
+            Q(plaka__icontains=arama) | 
+            Q(marka__icontains=arama) |
+            Q(model__icontains=arama) |
+            Q(motor_no__icontains=arama) |
+            Q(sasi_no__icontains=arama)
+        )
+    
+    # Count active vehicles
+    aktif_arac_sayisi = AracBilgileri.objects.filter(arac_durumu='Aktif').count()
+    
+    # Count vehicles with active maintenance alerts
+    bugunku_tarih = datetime.now().date()
+    bakim_bekleyen_sayisi = AracBakim.objects.filter(
+        bir_sonraki_bakim_tarihi__lte=bugunku_tarih
+    ).values('arac').distinct().count()
+    
+    # Count vehicles with active warnings
+    uyari_sayisi = AracUyari.objects.filter(
+        durum='Aktif'
+    ).values('arac').distinct().count()
+    
+    # Export functionality (for Excel/PDF export buttons)
+    export_format = request.GET.get('export', '')
+    if export_format:
+        # Implement export functionality here
+        pass
+    
+    context = {
+        'araclar': araclar,
+        'aktif_arac_sayisi': aktif_arac_sayisi,
+        'bakim_bekleyen_sayisi': bakim_bekleyen_sayisi,
+        'uyari_sayisi': uyari_sayisi,
+        'arac_durumu_filtre': arac_durumu,
+        'arac_tipi_filtre': arac_tipi,
+        'arama_filtre': arama,
+    }
+    return render(request, 'sefer_app/arac_list.html', context)
+
+def arac_detail(request, pk):
+    """Display detailed information about a specific vehicle."""
+    arac = get_object_or_404(AracBilgileri, pk=pk)
+    bakimlar = AracBakim.objects.filter(arac=arac).order_by('-bakim_tarihi')
+    uyarilar = AracUyari.objects.filter(arac=arac).order_by('-olusturma_tarihi')
+    seferler = Seferler.objects.filter(arac=arac).order_by('-cikis_tarihi')
+    
+    context = {
+        'arac': arac,
+        'bakimlar': bakimlar,
+        'uyarilar': uyarilar,
+        'seferler': seferler,
+    }
+    return render(request, 'sefer_app/arac_detail.html', context)
+
+def arac_create(request):
+    """Create a new vehicle."""
+    # Get all active personnel for driver selection
+    personeller = Personeller.objects.filter(Durum='Aktif').order_by('PerAd')
+    
+    if request.method == 'POST':
+        # Process form data and create vehicle
+        plaka = request.POST.get('plaka')
+        arac_durumu = request.POST.get('arac_durumu', 'Aktif')
+        arac_tipi = request.POST.get('arac_tipi')
+        atanmis_sofor_id = request.POST.get('atanmis_sofor')
+        marka = request.POST.get('marka')
+        model = request.POST.get('model')
+        model_yili = request.POST.get('model_yili')
+        yakit_tipi = request.POST.get('yakit_tipi')
+        motor_no = request.POST.get('motor_no')
+        sasi_no = request.POST.get('sasi_no')
+        kilometre = request.POST.get('kilometre')
+        kullanim_sekli = request.POST.get('kullanim_sekli', 'Nakliye')
+        lastik_olculeri = request.POST.get('lastik_olculeri', '')
+        
+        # Basic validation
+        if not plaka:
+            messages.error(request, 'Plaka alanı zorunludur.')
+            context = {
+                'personeller': personeller,
+            }
+            return render(request, 'sefer_app/arac_form.html', context)
+        
+        # Create new vehicle
+        try:
+            arac = AracBilgileri(
+                plaka=plaka,
+                arac_durumu=arac_durumu,
+                arac_tipi=arac_tipi,
+                marka=marka,
+                model=model,
+                model_yili=model_yili if model_yili else None,
+                yakit_tipi=yakit_tipi,
+                motor_no=motor_no,
+                sasi_no=sasi_no,
+                kilometre=kilometre if kilometre else 0,
+                kullanim_sekli=kullanim_sekli,
+                lastik_olculeri=lastik_olculeri
+            )
+            
+            # Set atanmis_sofor if provided
+            if atanmis_sofor_id:
+                arac.atanmis_sofor_id = atanmis_sofor_id
+                
+            arac.save()
+            messages.success(request, f'Araç "{plaka}" başarıyla oluşturuldu.')
+            return redirect('arac_detail', pk=arac.id)
+        except Exception as e:
+            messages.error(request, f'Araç oluşturulurken hata oluştu: {str(e)}')
+    
+    # Display empty form
+    context = {
+        'personeller': personeller,
+    }
+    return render(request, 'sefer_app/arac_form.html', context)
+
+def arac_update(request, pk):
+    """Update an existing vehicle."""
+    arac = get_object_or_404(AracBilgileri, pk=pk)
+    personeller = Personeller.objects.filter(Durum='Aktif').order_by('PerAd')
+    
+    if request.method == 'POST':
+        # Process form data
+        arac.plaka = request.POST.get('plaka')
+        arac.arac_durumu = request.POST.get('arac_durumu', 'Aktif')
+        arac.arac_tipi = request.POST.get('arac_tipi')
+        atanmis_sofor_id = request.POST.get('atanmis_sofor')
+        arac.marka = request.POST.get('marka')
+        arac.model = request.POST.get('model')
+        
+        model_yili = request.POST.get('model_yili')
+        arac.model_yili = model_yili if model_yili else None
+        
+        arac.yakit_tipi = request.POST.get('yakit_tipi')
+        arac.motor_no = request.POST.get('motor_no')
+        arac.sasi_no = request.POST.get('sasi_no')
+        
+        kilometre = request.POST.get('kilometre')
+        arac.kilometre = kilometre if kilometre else 0
+        
+        arac.kullanim_sekli = request.POST.get('kullanim_sekli', 'Nakliye')
+        arac.lastik_olculeri = request.POST.get('lastik_olculeri', '')
+        
+        # Set or clear atanmis_sofor
+        if atanmis_sofor_id:
+            arac.atanmis_sofor_id = atanmis_sofor_id
+        else:
+            arac.atanmis_sofor = None
+        
+        # Basic validation
+        if not arac.plaka:
+            messages.error(request, 'Plaka alanı zorunludur.')
+            context = {
+                'arac': arac,
+                'personeller': personeller,
+            }
+            return render(request, 'sefer_app/arac_form.html', context)
+        
+        try:
+            arac.save()
+            messages.success(request, f'Araç "{arac.plaka}" başarıyla güncellendi.')
+            return redirect('arac_detail', pk=arac.id)
+        except Exception as e:
+            messages.error(request, f'Araç güncellenirken hata oluştu: {str(e)}')
+    
+    # Display form with existing data
+    context = {
+        'arac': arac,
+        'personeller': personeller,
+    }
+    return render(request, 'sefer_app/arac_form.html', context)
+
+def arac_delete(request, pk):
+    """Delete a vehicle."""
+    arac = get_object_or_404(AracBilgileri, pk=pk)
+    # Delete confirmation will be implemented here
+    return redirect('arac_list')
+
+# Bakim (Maintenance) Views
+def bakim_list(request):
+    """List all maintenance records with filtering options."""
+    # Apply filters if provided
+    arac_id = request.GET.get('arac', '')
+    bakim_turu = request.GET.get('bakim_turu', '')
+    baslangic_tarihi = request.GET.get('baslangic_tarihi', '')
+    bitis_tarihi = request.GET.get('bitis_tarihi', '')
+    
+    # Base queryset
+    bakimlar = AracBakim.objects.all().order_by('-bakim_tarihi')
+    
+    # Apply filters
+    if arac_id:
+        bakimlar = bakimlar.filter(arac_id=arac_id)
+    
+    if bakim_turu:
+        bakimlar = bakimlar.filter(bakim_turu=bakim_turu)
+    
+    if baslangic_tarihi:
+        bakimlar = bakimlar.filter(bakim_tarihi__gte=baslangic_tarihi)
+    
+    if bitis_tarihi:
+        bakimlar = bakimlar.filter(bakim_tarihi__lte=bitis_tarihi)
+    
+    # Get all vehicles for the filter dropdown
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    
+    # Get current date for checking upcoming maintenance
+    today = datetime.now().date()
+    
+    # Count maintenance records for this month
+    current_month = today.month
+    current_year = today.year
+    month_start = datetime(current_year, current_month, 1).date()
+    month_end = (datetime(current_year, current_month + 1, 1) - timedelta(days=1)).date() if current_month < 12 else datetime(current_year, 12, 31).date()
+    bu_ay_yapilan = bakimlar.filter(bakim_tarihi__range=(month_start, month_end)).count()
+    
+    # Count upcoming maintenance
+    yaklasan_bakimlar = AracBakim.objects.filter(bir_sonraki_bakim_tarihi__lte=today + timedelta(days=30)).count()
+    
+    # Export functionality (for Excel/PDF export buttons)
+    export_format = request.GET.get('export', '')
+    if export_format:
+        # Implement export functionality here
+        pass
+    
+    context = {
+        'bakimlar': bakimlar,
+        'araclar': araclar,
+        'bu_ay_yapilan': bu_ay_yapilan,
+        'yaklasan_bakimlar': yaklasan_bakimlar,
+        'today': today,
+    }
+    return render(request, 'sefer_app/bakim_list.html', context)
+
+def bakim_create(request):
+    """Create a new maintenance record."""
+    # Get all vehicles for vehicle selection
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    today = datetime.now().date()
+    
+    if request.method == 'POST':
+        # Process form data
+        arac_id = request.POST.get('arac')
+        bakim_turu = request.POST.get('bakim_turu')
+        bakim_tarihi = request.POST.get('bakim_tarihi')
+        maliyet = request.POST.get('maliyet', 0)
+        bir_sonraki_bakim_tarihi = request.POST.get('bir_sonraki_bakim_tarihi')
+        bir_sonraki_bakim_km = request.POST.get('bir_sonraki_bakim_km')
+        yapilan_islemler = request.POST.get('yapilan_islemler')
+        notlar = request.POST.get('notlar', '')
+        
+        # Basic validation
+        if not arac_id or not bakim_turu or not bakim_tarihi or not yapilan_islemler:
+            messages.error(request, 'Araç, bakım türü, bakım tarihi ve yapılan işlemler alanları zorunludur.')
+            context = {
+                'araclar': araclar,
+                'today': today,
+            }
+            return render(request, 'sefer_app/bakim_form.html', context)
+        
+        # Create new maintenance record
+        try:
+            bakim = AracBakim(
+                arac_id=arac_id,
+                bakim_turu=bakim_turu,
+                bakim_tarihi=bakim_tarihi,
+                maliyet=maliyet,
+                bir_sonraki_bakim_tarihi=bir_sonraki_bakim_tarihi if bir_sonraki_bakim_tarihi else None,
+                bir_sonraki_bakim_km=bir_sonraki_bakim_km if bir_sonraki_bakim_km else None,
+                yapilan_islemler=yapilan_islemler,
+                notlar=notlar
+            )
+            bakim.save()
+            
+            # Update vehicle status if needed
+            if bakim_turu in ['Motor', 'Fren Sistemi']:
+                arac = AracBilgileri.objects.get(id=arac_id)
+                arac.arac_durumu = 'Bakımda'
+                if hasattr(arac, 'AktifMi'):
+                    arac.AktifMi = False
+                arac.save()
+            
+            messages.success(request, f'Bakım kaydı başarıyla oluşturuldu.')
+            return redirect('bakim_list')
+        except Exception as e:
+            messages.error(request, f'Bakım kaydı oluşturulurken hata oluştu: {str(e)}')
+    
+    # Display empty form
+    context = {
+        'araclar': araclar,
+        'today': today,
+    }
+    return render(request, 'sefer_app/bakim_form.html', context)
+
+def bakim_update(request, pk):
+    """Update an existing maintenance record."""
+    bakim = get_object_or_404(AracBakim, pk=pk)
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    today = datetime.now().date()
+    
+    if request.method == 'POST':
+        # Process form data
+        bakim.arac_id = request.POST.get('arac')
+        bakim.bakim_turu = request.POST.get('bakim_turu')
+        bakim.bakim_tarihi = request.POST.get('bakim_tarihi')
+        bakim.maliyet = request.POST.get('maliyet', 0)
+        
+        bir_sonraki_bakim_tarihi = request.POST.get('bir_sonraki_bakim_tarihi')
+        bakim.bir_sonraki_bakim_tarihi = bir_sonraki_bakim_tarihi if bir_sonraki_bakim_tarihi else None
+        
+        bir_sonraki_bakim_km = request.POST.get('bir_sonraki_bakim_km')
+        bakim.bir_sonraki_bakim_km = bir_sonraki_bakim_km if bir_sonraki_bakim_km else None
+        
+        bakim.yapilan_islemler = request.POST.get('yapilan_islemler')
+        bakim.notlar = request.POST.get('notlar', '')
+        
+        # Basic validation
+        if not bakim.arac_id or not bakim.bakim_turu or not bakim.bakim_tarihi or not bakim.yapilan_islemler:
+            messages.error(request, 'Araç, bakım türü, bakım tarihi ve yapılan işlemler alanları zorunludur.')
+            context = {
+                'bakim': bakim,
+                'araclar': araclar,
+                'today': today,
+            }
+            return render(request, 'sefer_app/bakim_form.html', context)
+        
+        try:
+            bakim.save()
+            messages.success(request, f'Bakım kaydı başarıyla güncellendi.')
+            return redirect('bakim_list')
+        except Exception as e:
+            messages.error(request, f'Bakım kaydı güncellenirken hata oluştu: {str(e)}')
+    
+    # Display form with existing data
+    context = {
+        'bakim': bakim,
+        'araclar': araclar,
+        'today': today,
+    }
+    return render(request, 'sefer_app/bakim_form.html', context)
+
+def bakim_delete(request, pk):
+    """Delete a maintenance record."""
+    bakim = get_object_or_404(AracBakim, pk=pk)
+    # Delete confirmation will be implemented here
+    return redirect('bakim_list')
+
+# Uyari (Alert) Views
+def uyari_list(request):
+    """List all alerts with filtering options."""
+    # Apply filters if provided
+    arac_id = request.GET.get('arac', '')
+    uyari_turu = request.GET.get('uyari_turu', '')
+    durum = request.GET.get('durum', '')
+    
+    # Base queryset
+    uyarilar = AracUyari.objects.all().order_by('-olusturma_tarihi')
+    
+    # Apply filters
+    if arac_id:
+        uyarilar = uyarilar.filter(arac_id=arac_id)
+    
+    if uyari_turu:
+        uyarilar = uyarilar.filter(uyari_turu=uyari_turu)
+    
+    if durum:
+        uyarilar = uyarilar.filter(durum=durum)
+    
+    # Get all vehicles for the filter dropdown
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    
+    # Get current date for checking due alerts
+    today = datetime.now().date()
+    
+    # Count active alerts
+    aktif_uyari_sayisi = uyarilar.filter(durum='Aktif').count()
+    
+    # Count alerts with approaching due dates (within 7 days)
+    yaklasan_uyari_sayisi = uyarilar.filter(
+        durum='Aktif',
+        son_tarih__lte=today + timedelta(days=7),
+        son_tarih__gte=today
+    ).count()
+    
+    # Export functionality (for Excel/PDF export buttons)
+    export_format = request.GET.get('export', '')
+    if export_format:
+        # Implement export functionality here
+        pass
+    
+    context = {
+        'uyarilar': uyarilar,
+        'araclar': araclar,
+        'aktif_uyari_sayisi': aktif_uyari_sayisi,
+        'yaklasan_uyari_sayisi': yaklasan_uyari_sayisi,
+        'today': today,
+    }
+    return render(request, 'sefer_app/uyari_list.html', context)
+
+def uyari_create(request):
+    """Create a new alert."""
+    # Get all vehicles for vehicle selection
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    today = datetime.now().date()
+    
+    if request.method == 'POST':
+        # Process form data
+        arac_id = request.POST.get('arac')
+        uyari_turu = request.POST.get('uyari_turu')
+        uyari_mesaji = request.POST.get('uyari_mesaji')
+        olusturma_tarihi = request.POST.get('olusturma_tarihi', today)
+        son_tarih = request.POST.get('son_tarih')
+        durum = request.POST.get('durum', 'Aktif')
+        oncelik = request.POST.get('oncelik', 'Normal')
+        notlar = request.POST.get('notlar', '')
+        
+        # Basic validation
+        if not arac_id or not uyari_turu or not uyari_mesaji:
+            messages.error(request, 'Araç, uyarı türü ve uyarı mesajı alanları zorunludur.')
+            context = {
+                'araclar': araclar,
+                'today': today,
+            }
+            return render(request, 'sefer_app/uyari_form.html', context)
+        
+        # Create new alert
+        try:
+            uyari = AracUyari(
+                arac_id=arac_id,
+                uyari_turu=uyari_turu,
+                uyari_mesaji=uyari_mesaji,
+                olusturma_tarihi=olusturma_tarihi,
+                son_tarih=son_tarih if son_tarih else None,
+                durum=durum,
+                oncelik=oncelik,
+                notlar=notlar
+            )
+            uyari.save()
+            messages.success(request, f'Uyarı başarıyla oluşturuldu.')
+            return redirect('uyari_list')
+        except Exception as e:
+            messages.error(request, f'Uyarı oluşturulurken hata oluştu: {str(e)}')
+    
+    # Display empty form
+    context = {
+        'araclar': araclar,
+        'today': today,
+    }
+    return render(request, 'sefer_app/uyari_form.html', context)
+
+def uyari_update(request, pk):
+    """Update an existing alert."""
+    uyari = get_object_or_404(AracUyari, pk=pk)
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    today = datetime.now().date()
+    
+    if request.method == 'POST':
+        # Process form data
+        uyari.arac_id = request.POST.get('arac')
+        uyari.uyari_turu = request.POST.get('uyari_turu')
+        uyari.uyari_mesaji = request.POST.get('uyari_mesaji')
+        uyari.olusturma_tarihi = request.POST.get('olusturma_tarihi', today)
+        
+        son_tarih = request.POST.get('son_tarih')
+        uyari.son_tarih = son_tarih if son_tarih else None
+        
+        uyari.durum = request.POST.get('durum', 'Aktif')
+        uyari.oncelik = request.POST.get('oncelik', 'Normal')
+        uyari.notlar = request.POST.get('notlar', '')
+        
+        # Basic validation
+        if not uyari.arac_id or not uyari.uyari_turu or not uyari.uyari_mesaji:
+            messages.error(request, 'Araç, uyarı türü ve uyarı mesajı alanları zorunludur.')
+            context = {
+                'uyari': uyari,
+                'araclar': araclar,
+                'today': today,
+            }
+            return render(request, 'sefer_app/uyari_form.html', context)
+        
+        try:
+            uyari.save()
+            messages.success(request, f'Uyarı başarıyla güncellendi.')
+            return redirect('uyari_list')
+        except Exception as e:
+            messages.error(request, f'Uyarı güncellenirken hata oluştu: {str(e)}')
+    
+    # Display form with existing data
+    context = {
+        'uyari': uyari,
+        'araclar': araclar,
+        'today': today,
+    }
+    return render(request, 'sefer_app/uyari_form.html', context)
+
+def uyari_delete(request, pk):
+    """Delete an alert."""
+    uyari = get_object_or_404(AracUyari, pk=pk)
+    # Delete confirmation will be implemented here
+    return redirect('uyari_list')
+
+# Masraf (Expense) Views
+def masraf_list(request):
+    """List all expenses with filtering options."""
+    from datetime import date, timedelta
+    import json
+    from django.db.models import Sum, Count
+
+    # Get filter parameters
+    masraf_tipi = request.GET.get('masraf_tipi', '')
+    kasa_id = request.GET.get('kasa', '')
+    baslangic_tarihi = request.GET.get('baslangic_tarihi', '')
+    bitis_tarihi = request.GET.get('bitis_tarihi', '')
+    sefer_id = request.GET.get('sefer', '')
+    
+    # Base queryset
+    masraflar = SeferMasraf.objects.all().order_by('-Tarih')
+    
+    # Apply filters
+    if masraf_tipi:
+        masraflar = masraflar.filter(MasrafTipi=masraf_tipi)
+    
+    if kasa_id:
+        masraflar = masraflar.filter(Kasa_id=kasa_id)
+    
+    if baslangic_tarihi:
+        masraflar = masraflar.filter(Tarih__gte=baslangic_tarihi)
+    
+    if bitis_tarihi:
+        masraflar = masraflar.filter(Tarih__lte=bitis_tarihi)
+    
+    if sefer_id:
+        masraflar = masraflar.filter(Sefer_id=sefer_id)
+    
+    # Get all cash registers and trips for filters
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    seferler = Seferler.objects.filter(durum='Aktif').order_by('-cikis_tarihi')
+    
+    # Get unique expense types
+    masraf_tipleri = SeferMasraf.objects.values_list('MasrafTipi', flat=True).distinct()
+    
+    # Prepare data for charts
+    
+    # 1. Expense by type chart
+    masraf_by_type = SeferMasraf.objects.values('MasrafTipi').annotate(
+        toplam=Sum('TutarEUR')
+    ).order_by('-toplam')
+    
+    # 2. Expense by month chart (last 6 months)
+    today = date.today()
+    six_months_ago = today - timedelta(days=180)
+    
+    masraf_by_month = {}
+    current_month = today.replace(day=1)
+    
+    # Initialize the last 6 months with zero values
+    for i in range(6):
+        month = (current_month - timedelta(days=30*i)).strftime("%Y-%m")
+        month_name = (current_month - timedelta(days=30*i)).strftime("%b %Y")
+        masraf_by_month[month] = {
+            'month_name': month_name,
+            'total': 0
+        }
+    
+    # Calculate totals for each month
+    monthly_data = SeferMasraf.objects.filter(
+        Tarih__gte=six_months_ago
+    ).extra({
+        'month': "strftime('%%Y-%%m', Tarih)"
+    }).values('month').annotate(
+        total=Sum('TutarEUR')
+    )
+    
+    for item in monthly_data:
+        month = item['month']
+        if month in masraf_by_month:
+            masraf_by_month[month]['total'] = float(item['total'])
+    
+    # Convert to a list for easier template rendering
+    months_data = [
+        {
+            'month': k,
+            'month_name': v['month_name'],
+            'total': v['total']
+        } for k, v in masraf_by_month.items()
+    ]
+    months_data.reverse()  # Display from oldest to newest
+    
+    # 3. Expense by cash register
+    masraf_by_kasa = SeferMasraf.objects.values(
+        'Kasa__kasa_adi'
+    ).annotate(
+        toplam=Sum('TutarEUR')
+    ).filter(
+        Kasa__isnull=False
+    ).order_by('-toplam')
+    
+    # Calculate summary statistics
+    toplam_masraf_eur = masraflar.aggregate(Sum('TutarEUR'))['TutarEUR__sum'] or 0
+    
+    # Determine default date range for filter (if not provided)
+    if not baslangic_tarihi:
+        baslangic_tarihi = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+    if not bitis_tarihi:
+        bitis_tarihi = today.strftime('%Y-%m-%d')
+    
+    context = {
+        'masraflar': masraflar,
+        'kasalar': kasalar,
+        'seferler': seferler,
+        'masraf_tipleri': masraf_tipleri,
+        'toplam_masraf_eur': toplam_masraf_eur,
+        
+        # Chart data
+        'masraf_by_type': list(masraf_by_type),
+        'masraf_by_month': months_data,
+        'masraf_by_kasa': list(masraf_by_kasa),
+        
+        # Filter values for keeping state
+        'masraf_tipi_filtre': masraf_tipi,
+        'kasa_filtre': kasa_id,
+        'baslangic_tarihi_filtre': baslangic_tarihi,
+        'bitis_tarihi_filtre': bitis_tarihi,
+        'sefer_filtre': sefer_id,
+    }
+    
+    return render(request, 'sefer_app/masraf_list.html', context)
+
+def masraf_create(request):
+    """Create a new expense."""
+    from datetime import date
+    today = date.today()
+    
+    # Get all trips and cash registers for select options
+    seferler = Seferler.objects.all().order_by('-cikis_tarihi')
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    if request.method == 'POST':
+        # Get form data
+        sefer_id = request.POST.get('sefer')
+        masraf_tipi = request.POST.get('masraf_tipi')
+        tarih = request.POST.get('tarih')
+        tutar = request.POST.get('tutar')
+        para_birimi = request.POST.get('para_birimi', 'TL')
+        kur = request.POST.get('kur', '1.0')
+        kasa_id = request.POST.get('kasa')
+        odeme_yontemi = request.POST.get('odeme_yontemi', 'Nakit')
+        belge_no = request.POST.get('belge_no', '')
+        aciklama = request.POST.get('aciklama', '')
+        
+        # Basic validation
+        if not masraf_tipi or not tarih or not tutar or not kasa_id:
+            messages.error(request, 'Masraf tipi, tarih, tutar ve kasa alanları zorunludur.')
+            context = {
+                'seferler': seferler,
+                'kasalar': kasalar,
+                'today': today
+            }
+            return render(request, 'sefer_app/masraf_form.html', context)
+        
+        # Convert numeric values
+        try:
+            tutar = Decimal(tutar)
+            kur = Decimal(kur)
+            
+            # Calculate EUR amount
+            if para_birimi == 'EUR':
+                tutar_eur = tutar
+            else:
+                tutar_eur = tutar / kur
+        except:
+            messages.error(request, 'Tutar ve kur sayısal değerler olmalıdır.')
+            context = {
+                'seferler': seferler,
+                'kasalar': kasalar,
+                'today': today
+            }
+            return render(request, 'sefer_app/masraf_form.html', context)
+        
+        # Create the expense
+        try:
+            masraf = SeferMasraf(
+                Sefer_id=sefer_id if sefer_id else None,
+                MasrafTipi=masraf_tipi,
+                Tarih=tarih,
+                Tutar=tutar,
+                ParaBirimi=para_birimi,
+                KurEUR=kur,
+                TutarEUR=tutar_eur,
+                Kasa_id=kasa_id,
+                OdemeYontemi=odeme_yontemi,
+                BelgeNo=belge_no,
+                Aciklama=aciklama
+            )
+            masraf.save()
+            messages.success(request, 'Masraf başarıyla oluşturuldu.')
+            return redirect('masraf_list')
+        except Exception as e:
+            messages.error(request, f'Masraf oluşturulurken hata oluştu: {str(e)}')
+    
+    # Display empty form
+    context = {
+        'seferler': seferler,
+        'kasalar': kasalar,
+        'today': today
+    }
+    return render(request, 'sefer_app/masraf_form.html', context)
+
+def masraf_update(request, pk):
+    """Update an existing expense."""
+    from datetime import date
+    today = date.today()
+    
+    # Get the expense to update
+    masraf = get_object_or_404(SeferMasraf, pk=pk)
+    
+    # Get all trips and cash registers for select options
+    seferler = Seferler.objects.all().order_by('-cikis_tarihi')
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    if request.method == 'POST':
+        # Get form data
+        sefer_id = request.POST.get('sefer')
+        masraf_tipi = request.POST.get('masraf_tipi')
+        tarih = request.POST.get('tarih')
+        tutar = request.POST.get('tutar')
+        para_birimi = request.POST.get('para_birimi', 'TL')
+        kur = request.POST.get('kur', '1.0')
+        kasa_id = request.POST.get('kasa')
+        odeme_yontemi = request.POST.get('odeme_yontemi', 'Nakit')
+        belge_no = request.POST.get('belge_no', '')
+        aciklama = request.POST.get('aciklama', '')
+        
+        # Basic validation
+        if not masraf_tipi or not tarih or not tutar or not kasa_id:
+            messages.error(request, 'Masraf tipi, tarih, tutar ve kasa alanları zorunludur.')
+            context = {
+                'masraf': masraf,
+                'seferler': seferler,
+                'kasalar': kasalar,
+                'today': today
+            }
+            return render(request, 'sefer_app/masraf_form.html', context)
+        
+        # Convert numeric values
+        try:
+            tutar = Decimal(tutar)
+            kur = Decimal(kur)
+            
+            # Calculate EUR amount
+            if para_birimi == 'EUR':
+                tutar_eur = tutar
+            else:
+                tutar_eur = tutar / kur
+        except:
+            messages.error(request, 'Tutar ve kur sayısal değerler olmalıdır.')
+            context = {
+                'masraf': masraf,
+                'seferler': seferler,
+                'kasalar': kasalar,
+                'today': today
+            }
+            return render(request, 'sefer_app/masraf_form.html', context)
+        
+        # Update the expense
+        try:
+            masraf.Sefer_id = sefer_id if sefer_id else None
+            masraf.MasrafTipi = masraf_tipi
+            masraf.Tarih = tarih
+            masraf.Tutar = tutar
+            masraf.ParaBirimi = para_birimi
+            masraf.KurEUR = kur
+            masraf.TutarEUR = tutar_eur
+            masraf.Kasa_id = kasa_id
+            masraf.OdemeYontemi = odeme_yontemi
+            masraf.BelgeNo = belge_no
+            masraf.Aciklama = aciklama
+            
+            masraf.save()
+            messages.success(request, 'Masraf başarıyla güncellendi.')
+            return redirect('masraf_list')
+        except Exception as e:
+            messages.error(request, f'Masraf güncellenirken hata oluştu: {str(e)}')
+    
+    # Display form with current data
+    context = {
+        'masraf': masraf,
+        'seferler': seferler,
+        'kasalar': kasalar,
+        'today': today
+    }
+    return render(request, 'sefer_app/masraf_form.html', context)
+
+def masraf_delete(request, pk):
+    """Delete an expense."""
+    masraf = get_object_or_404(SeferMasraf, pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            masraf.delete()
+            messages.success(request, 'Masraf başarıyla silindi.')
+        except Exception as e:
+            messages.error(request, f'Masraf silinirken hata oluştu: {str(e)}')
+    
+    return redirect('masraf_list')
+
+def masraf_sil(request, pk):
+    """Delete an expense (alternative function)."""
+    masraf = get_object_or_404(SeferMasraf, pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            masraf.delete()
+            messages.success(request, 'Masraf başarıyla silindi.')
+        except Exception as e:
+            messages.error(request, f'Masraf silinirken hata oluştu: {str(e)}')
+    
+    # Redirect to the referring page if possible, otherwise to the expense list
+    referring_page = request.META.get('HTTP_REFERER')
+    if referring_page and 'sefer_detail' in referring_page:
+        sefer_id = masraf.Sefer.id if masraf.Sefer else None
+        if sefer_id:
+            return redirect('sefer_detail', pk=sefer_id)
+    
+    return redirect('masraf_list')
+
+# Rapor (Report) Views
+def rapor_list(request):
+    """Display reports menu."""
+    return render(request, 'sefer_app/rapor_list.html')
+
+# Ayarlar (Settings) View
+def ayarlar(request):
+    """Display and handle settings."""
+    return render(request, 'sefer_app/ayarlar.html')
+
+def masraf_ekle(request, sefer_id):
+    """Add an expense to a trip."""
+    sefer = get_object_or_404(Seferler, pk=sefer_id)
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    if request.method == 'POST':
+        # Get form data
+        masraf_tipi = request.POST.get('masraf_tipi')
+        tutar = request.POST.get('tutar')
+        kur = request.POST.get('kur', '1.0')
+        tarih = request.POST.get('tarih')
+        kasa_id = request.POST.get('kasa')
+        aciklama = request.POST.get('aciklama', '')
+        
+        # Basic validation
+        if not masraf_tipi or not tutar or not tarih or not kasa_id:
+            messages.error(request, 'Masraf tipi, tutar, tarih ve kasa alanları zorunludur.')
+            return redirect('sefer_detail', pk=sefer_id)
+        
+        # Convert numeric values
+        try:
+            tutar = Decimal(tutar)
+            kur = Decimal(kur)
+            tutar_eur = tutar / kur
+        except:
+            messages.error(request, 'Tutar ve kur sayısal değerler olmalıdır.')
+            return redirect('sefer_detail', pk=sefer_id)
+        
+        # Create the expense
+        try:
+            masraf = SeferMasraf(
+                Sefer=sefer,
+                MasrafTipi=masraf_tipi,  # Now using the dedicated MasrafTipi field
+                Tutar=tutar,
+                ParaBirimi='TL',
+                KurEUR=kur,
+                TutarEUR=tutar_eur,
+                Tarih=tarih,
+                Kasa_id=kasa_id,
+                OdemeYontemi='Nakit',
+                Aciklama=aciklama  # Using the actual description from the form
+            )
+            masraf.save()
+            messages.success(request, 'Masraf başarıyla eklendi.')
+        except Exception as e:
+            messages.error(request, f'Masraf eklenirken hata oluştu: {str(e)}')
+    
+    return redirect('sefer_detail', pk=sefer_id)
+
+def masraf_sil(request, masraf_id):
+    """Delete an expense from a trip."""
+    masraf = get_object_or_404(SeferMasraf, pk=masraf_id)
+    sefer_id = masraf.Sefer.id
+    
+    if request.method == 'POST':
+        try:
+            masraf.delete()
+            messages.success(request, 'Masraf başarıyla silindi.')
+        except Exception as e:
+            messages.error(request, f'Masraf silinirken hata oluştu: {str(e)}')
+    
+    return redirect('sefer_detail', pk=sefer_id)
+
+# Personel (Personnel) Views
+def personel_list(request):
+    """List all personnel with filtering options."""
+    # Base queryset
+    personeller = Personeller.objects.all().order_by('PerAd')
+    
+    # Get filter parameters
+    durum = request.GET.get('durum', '')
+    departman = request.GET.get('departman', '')
+    arama = request.GET.get('arama', '')
+    
+    # Apply filters
+    if durum:
+        personeller = personeller.filter(Durum=durum)
+    
+    if departman:
+        personeller = personeller.filter(Departman=departman)
+    
+    if arama:
+        personeller = personeller.filter(
+            Q(PerAd__icontains=arama) | 
+            Q(PerSoyad__icontains=arama) |
+            Q(VatandaslikNo__icontains=arama) |
+            Q(Telefon__icontains=arama) |
+            Q(Eposta__icontains=arama)
+        )
+    
+    # Count by status for statistics
+    aktif_personel_sayisi = Personeller.objects.filter(Durum='Aktif').count()
+    pasif_personel_sayisi = Personeller.objects.filter(Durum='Pasif').count()
+    
+    context = {
+        'personeller': personeller,
+        'aktif_personel_sayisi': aktif_personel_sayisi,
+        'pasif_personel_sayisi': pasif_personel_sayisi,
+        'toplam_personel_sayisi': personeller.count(),
+        # Keep current filters for pagination
+        'durum_filtre': durum,
+        'departman_filtre': departman,
+        'arama_filtre': arama,
+    }
+    return render(request, 'sefer_app/personel_list.html', context)
+
+def personel_detail(request, pk):
+    """Display detailed information about a specific personnel."""
+    personel = get_object_or_404(Personeller, pk=pk)
+    
+    # Get assigned vehicles
+    atanmis_araclar = AracBilgileri.objects.filter(atanmis_sofor=personel)
+    
+    # Get trips made by the personnel
+    seferler = Seferler.objects.filter(personel=personel).order_by('-cikis_tarihi')
+    
+    context = {
+        'personel': personel,
+        'atanmis_araclar': atanmis_araclar,
+        'seferler': seferler,
+    }
+    return render(request, 'sefer_app/personel_detail.html', context)
+
+def personel_create(request):
+    """Create a new personnel."""
+    if request.method == 'POST':
+        # Process form data
+        per_ad = request.POST.get('PerAd')
+        per_soyad = request.POST.get('PerSoyad')
+        vatandaslik_no = request.POST.get('VatandaslikNo')
+        dogum_tarihi = request.POST.get('DogumTarihi')
+        telefon = request.POST.get('Telefon')
+        eposta = request.POST.get('Eposta')
+        adres = request.POST.get('Adres')
+        departman = request.POST.get('Departman')
+        pozisyon = request.POST.get('Pozisyon')
+        maas = request.POST.get('Maas')
+        ise_baslangic_tarihi = request.POST.get('IseBaslangicTarihi')
+        durum = request.POST.get('Durum', 'Aktif')
+        aciklama = request.POST.get('Aciklama', '')
+        
+        # Basic validation
+        if not per_ad or not per_soyad or not departman or not pozisyon:
+            messages.error(request, 'Ad, soyad, departman ve pozisyon alanları zorunludur.')
+            return render(request, 'sefer_app/personel_form.html')
+        
+        # Create the personnel
+        try:
+            personel = Personeller(
+                PerAd=per_ad,
+                PerSoyad=per_soyad,
+                VatandaslikNo=vatandaslik_no,
+                DogumTarihi=dogum_tarihi if dogum_tarihi else None,
+                Telefon=telefon,
+                Eposta=eposta,
+                Adres=adres,
+                Departman=departman,
+                Pozisyon=pozisyon,
+                Maas=maas,
+                IseBaslangicTarihi=ise_baslangic_tarihi if ise_baslangic_tarihi else None,
+                Durum=durum,
+                Aciklama=aciklama
+            )
+            personel.save()
+            messages.success(request, f'{per_ad} {per_soyad} personeli başarıyla oluşturuldu.')
+            return redirect('personel_detail', pk=personel.id)
+        except Exception as e:
+            messages.error(request, f'Personel oluşturulurken hata oluştu: {str(e)}')
+    
+    # Display empty form
+    return render(request, 'sefer_app/personel_form.html')
+
+def personel_update(request, pk):
+    """Update an existing personnel."""
+    personel = get_object_or_404(Personeller, pk=pk)
+    
+    if request.method == 'POST':
+        # Process form data
+        personel.PerAd = request.POST.get('PerAd')
+        personel.PerSoyad = request.POST.get('PerSoyad')
+        personel.VatandaslikNo = request.POST.get('VatandaslikNo')
+        personel.DogumTarihi = request.POST.get('DogumTarihi') if request.POST.get('DogumTarihi') else None
+        personel.Telefon = request.POST.get('Telefon')
+        personel.Eposta = request.POST.get('Eposta')
+        personel.Adres = request.POST.get('Adres')
+        personel.Departman = request.POST.get('Departman')
+        personel.Pozisyon = request.POST.get('Pozisyon')
+        personel.Maas = request.POST.get('Maas')
+        personel.IseBaslangicTarihi = request.POST.get('IseBaslangicTarihi') if request.POST.get('IseBaslangicTarihi') else None
+        personel.Durum = request.POST.get('Durum', 'Aktif')
+        personel.Aciklama = request.POST.get('Aciklama', '')
+        
+        # Basic validation
+        if not personel.PerAd or not personel.PerSoyad or not personel.Departman or not personel.Pozisyon:
+            messages.error(request, 'Ad, soyad, departman ve pozisyon alanları zorunludur.')
+            return render(request, 'sefer_app/personel_form.html', {'personel': personel})
+        
+        # Save the personnel
+        try:
+            personel.save()
+            messages.success(request, f'{personel.PerAd} {personel.PerSoyad} personeli başarıyla güncellendi.')
+            return redirect('personel_detail', pk=personel.id)
+        except Exception as e:
+            messages.error(request, f'Personel güncellenirken hata oluştu: {str(e)}')
+    
+    # Display form with current data
+    return render(request, 'sefer_app/personel_form.html', {'personel': personel})
+
+def personel_delete(request, pk):
+    """Delete a personnel."""
+    personel = get_object_or_404(Personeller, pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            personel.delete()
+            messages.success(request, f'{personel.PerAd} {personel.PerSoyad} personeli başarıyla silindi.')
+            return redirect('personel_list')
+        except Exception as e:
+            messages.error(request, f'Personel silinirken hata oluştu: {str(e)}')
+            return redirect('personel_detail', pk=personel.id)
+    
+    # Display confirmation page or handle via JS confirmation
+    return render(request, 'sefer_app/personel_confirm_delete.html', {'personel': personel})
+
+def get_cities_by_country(request):
+    """Return cities filtered by country as JSON."""
+    country_id = request.GET.get('country_id')
+    
+    if not country_id:
+        return JsonResponse({'error': 'Country ID is required'}, status=400)
+    
+    try:
+        cities = Sehirler.objects.filter(ulke_id=country_id).order_by('sehir_adi')
+        cities_data = [{'id': city.id, 'name': city.sehir_adi} for city in cities]
+        return JsonResponse({'cities': cities_data})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

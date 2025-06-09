@@ -1,0 +1,159 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{% if personel %}Personel Düzenle{% else %}Yeni Personel{% endif %}{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}{% if personel %}Personel Düzenle{% else %}Yeni Personel{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5>Personel Bilgileri</h5>
+            <a href="{% if personel %}{% url 'personel_detail' personel.id %}{% else %}{% url 'personel_list' %}{% endif %}" class="btn btn-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> {% if personel %}Detay Sayfasına{% else %}Listeye{% endif %} Dön
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">{% if personel %}Personel Düzenle{% else %}Yeni Personel{% endif %}</h6>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{% if personel %}{% url 'personel_update' personel.id %}{% else %}{% url 'personel_create' %}{% endif %}">
+            {% csrf_token %}
+            
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Ad <span class="text-danger">*</span></label>
+                    <input type="text" name="per_ad" class="form-control form-control-sm" value="{{ personel.PerAd|default:'' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Soyad <span class="text-danger">*</span></label>
+                    <input type="text" name="per_soyad" class="form-control form-control-sm" value="{{ personel.PerSoyad|default:'' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Durum</label>
+                    <select name="durum" class="form-control form-control-sm select2">
+                        <option value="Aktif" {% if personel.Durum == 'Aktif' or not personel %}selected{% endif %}>Aktif</option>
+                        <option value="Pasif" {% if personel.Durum == 'Pasif' %}selected{% endif %}>Pasif</option>
+                        <option value="İzinli" {% if personel.Durum == 'İzinli' %}selected{% endif %}>İzinli</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Departman</label>
+                    <input type="text" name="departman" class="form-control form-control-sm" value="{{ personel.Departman|default:'' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Pozisyon</label>
+                    <input type="text" name="pozisyon" class="form-control form-control-sm" value="{{ personel.Pozisyon|default:'' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">T.C. Kimlik No</label>
+                    <input type="text" name="vatandaslik_no" class="form-control form-control-sm" value="{{ personel.VatandaslikNo|default:'' }}">
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Telefon</label>
+                    <input type="tel" name="telefon" class="form-control form-control-sm" value="{{ personel.Telefon|default:'' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">E-posta</label>
+                    <input type="email" name="eposta" class="form-control form-control-sm" value="{{ personel.Eposta|default:'' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Maaş (€)</label>
+                    <input type="number" step="0.01" name="maas" class="form-control form-control-sm" value="{{ personel.Maas|default:'' }}">
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">Doğum Tarihi</label>
+                    <input type="text" name="dogum_tarihi" class="form-control form-control-sm datepicker" value="{{ personel.DogumTarihi|date:'Y-m-d'|default:'' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">İşe Başlangıç Tarihi</label>
+                    <input type="text" name="ise_baslangic_tarihi" class="form-control form-control-sm datepicker" value="{{ personel.IseBaslangicTarihi|date:'Y-m-d'|default:'' }}">
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Adres</label>
+                <textarea name="adres" class="form-control form-control-sm" rows="2">{{ personel.Adres|default:'' }}</textarea>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Notlar</label>
+                <textarea name="aciklama" class="form-control form-control-sm" rows="3">{{ personel.Aciklama|default:'' }}</textarea>
+            </div>
+            
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fas fa-save"></i> {% if personel %}Güncelle{% else %}Kaydet{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    $(document).ready(function() {
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: {
+                    shorthand: ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct'],
+                    longhand: ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+                },
+                months: {
+                    shorthand: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+                    longhand: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+                }
+            }
+        });
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ bakim.id|yesno:"Bakım Düzenle,Yeni Bakım Kaydı" }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">{{ bakim.id|yesno:"Bakım Kaydı Düzenle,Yeni Bakım Kaydı Oluştur" }}</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="arac" class="form-label">Araç <span class="text-danger">*</span></label>
+                        <select name="arac" id="arac" class="form-select" required>
+                            <option value="">Araç Seçin</option>
+                            {% for arac in araclar %}
+                                <option value="{{ arac.id }}" {% if bakim.arac.id == arac.id %}selected{% endif %}>
+                                    {{ arac.plaka }} - {{ arac.marka }} {{ arac.model }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="bakim_turu" class="form-label">Bakım Türü <span class="text-danger">*</span></label>
+                        <input type="text" name="bakim_turu" id="bakim_turu" class="form-control" value="{{ bakim.bakim_turu|default:'' }}" required>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="bakim_tarihi" class="form-label">Bakım Tarihi <span class="text-danger">*</span></label>
+                        <input type="date" name="bakim_tarihi" id="bakim_tarihi" class="form-control" value="{{ bakim.bakim_tarihi|date:'Y-m-d'|default:today|date:'Y-m-d' }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="km" class="form-label">Kilometre</label>
+                        <input type="number" name="km" id="km" class="form-control" value="{{ bakim.kilometre|default:'' }}">
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label for="maliyet" class="form-label">Maliyet <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" name="maliyet" id="maliyet" class="form-control" value="{{ bakim.maliyet|default:'0' }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="para_birimi" class="form-label">Para Birimi <span class="text-danger">*</span></label>
+                        <select name="para_birimi" id="para_birimi" class="form-select" required>
+                            {% for pb in para_birimleri %}
+                                <option value="{{ pb.kod }}" {% if bakim.para_birimi == pb.kod %}selected{% elif pb.kod == 'TRY' and not bakim %}selected{% endif %}>
+                                    {{ pb.ad }} ({{ pb.kod }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="kur" class="form-label">Kur (TRY/Para Birimi)</label>
+                        <input type="number" step="0.0001" name="kur" id="kur" class="form-control" value="{{ bakim.kur|default:'1.0' }}">
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label for="tutar_eur" class="form-label">Tutar (EUR)</label>
+                        <input type="number" step="0.01" name="tutar_eur" id="tutar_eur" class="form-control" value="{{ bakim.maliyet_eur|default:'0' }}">
+                    </div>
+                    <div class="col-md-8">
+                        <label for="kasa" class="form-label">Kasa <span class="text-danger">*</span></label>
+                        <select name="kasa" id="kasa" class="form-select" required>
+                            <option value="">Kasa Seçin</option>
+                            {% for k in kasalar %}
+                                <option value="{{ k.id }}" {% if bakim.kasa.id == k.id %}selected{% endif %}>
+                                    {{ k.kasa_adi }} ({{ k.para_birimi }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <label for="belge_no" class="form-label">Belge No</label>
+                        <input type="text" name="belge_no" id="belge_no" class="form-control" value="{{ bakim.kasa_hareketi.belge_no|default:belge_no }}" readonly>
+                        <small class="text-muted">Belge numarası otomatik oluşturulur</small>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="bir_sonraki_bakim_tarihi" class="form-label">Bir Sonraki Bakım Tarihi</label>
+                        <input type="date" name="bir_sonraki_bakim_tarihi" id="bir_sonraki_bakim_tarihi" class="form-control" value="{{ bakim.bir_sonraki_bakim_tarihi|date:'Y-m-d'|default:'' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="bir_sonraki_bakim_km" class="form-label">Bir Sonraki Bakım Km</label>
+                        <input type="number" name="bir_sonraki_bakim_km" id="bir_sonraki_bakim_km" class="form-control" value="{{ bakim.bir_sonraki_bakim_km|default:'' }}">
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="yapilan_islemler" class="form-label">Yapılan İşlemler</label>
+                    <textarea name="yapilan_islemler" id="yapilan_islemler" class="form-control" rows="4">{{ bakim.yapilan_islemler|default:'' }}</textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="notlar" class="form-label">Notlar</label>
+                    <textarea name="notlar" id="notlar" class="form-control" rows="3">{{ bakim.notlar|default:'' }}</textarea>
+                </div>
+                
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'arac_list' %}" class="btn btn-secondary">İptal</a>
+                    <button type="submit" class="btn btn-primary">Kaydet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Kur ve para birimi değişince Euro değerini otomatik hesapla
+    document.addEventListener('DOMContentLoaded', function() {
+        const maliyetInput = document.getElementById('maliyet');
+        const kurInput = document.getElementById('kur');
+        const tutarEurInput = document.getElementById('tutar_eur');
+        const paraBirimiSelect = document.getElementById('para_birimi');
+        
+        function hesaplaEuroTutar() {
+            const maliyet = parseFloat(maliyetInput.value) || 0;
+            const kur = parseFloat(kurInput.value) || 1;
+            const paraBirimi = paraBirimiSelect.value;
+            
+            let euroTutar = 0;
+            if (paraBirimi === 'EUR') {
+                euroTutar = maliyet;
+            } else if (paraBirimi === 'TRY') {
+                euroTutar = maliyet / kur;
+            } else {
+                // Diğer para birimleri için kur üzerinden hesapla
+                euroTutar = maliyet / kur;
+            }
+            
+            tutarEurInput.value = euroTutar.toFixed(2);
+        }
+        
+        maliyetInput.addEventListener('input', hesaplaEuroTutar);
+        kurInput.addEventListener('input', hesaplaEuroTutar);
+        paraBirimiSelect.addEventListener('change', hesaplaEuroTutar);
+        
+        // Sayfa yüklendiğinde hesapla
+        hesaplaEuroTutar();
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,59 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Firma Bilgileri Kurulumu - NextSefer{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Firma Bilgileri Kurulumu</h1>
+    </div>
+
+    <form method="post" id="kurulumForm">
+        {% csrf_token %}
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">Firma Bilgileri</h6>
+                    </div>
+                    <div class="card-body">
+                        {{ firma_form.non_field_errors }}
+                        {% for field in firma_form %}
+                            <div class="mb-3">
+                                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.errors %}
+                                    <div class="text-danger small">{{ field.errors|striptags }}</div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="card shadow mb-4 mt-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">Yönetici Kullanıcı Bilgileri</h6>
+                    </div>
+                    <div class="card-body">
+                        {{ kullanici_form.non_field_errors }}
+                        {% for field in kullanici_form %}
+                            <div class="mb-3">
+                                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.errors %}
+                                    <div class="text-danger small">{{ field.errors|striptags }}</div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="d-grid gap-2 mt-4">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-save fa-sm me-1"></i> Kaydet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %} 

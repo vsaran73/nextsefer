@@ -1,0 +1,58 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Personel Sil{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Personel Silme Onayı</h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-danger">
+                <h5 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i> Dikkat!</h5>
+                <p>
+                    <strong>{{ personel.PerAd }} {{ personel.PerSoyad }}</strong> adlı personeli silmek üzeresiniz.
+                    Bu işlem geri alınamaz.
+                </p>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <table class="table table-sm table-bordered">
+                        <tr>
+                            <th style="width: 30%">Ad Soyad:</th>
+                            <td>{{ personel.PerAd }} {{ personel.PerSoyad }}</td>
+                        </tr>
+                        <tr>
+                            <th>Departman:</th>
+                            <td>{{ personel.Departman|default:"-" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Pozisyon:</th>
+                            <td>{{ personel.Pozisyon|default:"-" }}</td>
+                        </tr>
+                        <tr>
+                            <th>İşe Başlama:</th>
+                            <td>{{ personel.IseBaslangicTarihi|date:"d.m.Y"|default:"-" }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            
+            <form method="post" class="mt-4">
+                {% csrf_token %}
+                <div class="d-flex">
+                    <button type="submit" class="btn btn-danger me-2">
+                        <i class="fas fa-trash"></i> Evet, Personeli Sil
+                    </button>
+                    <a href="{% url 'personel_detail' personel.id %}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> İptal
+                    </a>
+                </div>
+            </form>
+            
+        </div>
+    </div>
+</div>
+{% endblock %} 

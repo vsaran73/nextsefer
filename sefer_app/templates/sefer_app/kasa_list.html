@@ -1,0 +1,220 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Kasalar - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+    
+    .balance-cell {
+        font-weight: bold;
+        text-align: right;
+        padding: 0.5rem 1rem !important;
+    }
+    
+    .balance-positive {
+        color: #1cc88a;
+        background-color: rgba(28, 200, 138, 0.1);
+    }
+    
+    .balance-negative {
+        color: #e74a3b;
+        background-color: rgba(231, 74, 59, 0.1);
+    }
+    
+    .balance-zero {
+        color: #858796;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Kasalar</h1>
+        <div>
+            <a href="{% url 'kasa_transfer_create' %}" class="btn btn-sm btn-success shadow-sm me-2">
+                <i class="fas fa-exchange-alt fa-sm text-white-50 me-1"></i> Kasa Transferi
+            </a>
+            <a href="{% url 'kasa_create' %}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-plus fa-sm text-white-50 me-1"></i> Yeni Kasa Ekle
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtreleme ve Arama -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Kasa Filtrele</h6>
+            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
+        <div class="collapse" id="filterCollapse">
+            <div class="card-body">
+                <form method="get" class="mb-0">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label for="kasa_tipi" class="form-label">Kasa Tipi</label>
+                            <select name="kasa_tipi" id="kasa_tipi" class="form-select form-control select2">
+                                <option value="">Tümü</option>
+                                <option value="Nakit" {% if kasa_tipi_filtre == 'Nakit' %}selected{% endif %}>Nakit</option>
+                                <option value="Banka" {% if kasa_tipi_filtre == 'Banka' %}selected{% endif %}>Banka</option>
+                                <option value="Kredi Kartı" {% if kasa_tipi_filtre == 'Kredi Kartı' %}selected{% endif %}>Kredi Kartı</option>
+                                <option value="Diğer" {% if kasa_tipi_filtre == 'Diğer' %}selected{% endif %}>Diğer</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="para_birimi" class="form-label">Para Birimi</label>
+                            <select name="para_birimi" id="para_birimi" class="form-select form-control select2">
+                                <option value="">Tümü</option>
+                                <option value="TRY" {% if para_birimi_filtre == 'TRY' %}selected{% endif %}>TRY</option>
+                                <option value="EUR" {% if para_birimi_filtre == 'EUR' %}selected{% endif %}>EUR</option>
+                                <option value="USD" {% if para_birimi_filtre == 'USD' %}selected{% endif %}>USD</option>
+                                <option value="GBP" {% if para_birimi_filtre == 'GBP' %}selected{% endif %}>GBP</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="arama" class="form-label">Arama</label>
+                            <input type="text" name="arama" id="arama" class="form-control" placeholder="Kasa adı..." value="{{ arama_filtre|default:'' }}">
+                        </div>
+                        <div class="col-md-2 mb-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-search fa-sm"></i> Filtrele
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kasa Tablosu -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Kasa Listesi</h6>
+            <div>
+                <button class="btn btn-sm btn-outline-primary" id="exportExcel">
+                    <i class="fas fa-file-excel fa-sm"></i> Excel
+                </button>
+                <button class="btn btn-sm btn-outline-danger" id="exportPdf">
+                    <i class="fas fa-file-pdf fa-sm"></i> PDF
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="kasalarTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Kasa Adı</th>
+                            <th>Kasa Tipi</th>
+                            <th>Para Birimi</th>
+                            <th class="text-center">Güncel Bakiye</th>
+                            <th>Açıklama</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for kasa in kasalar %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'kasa_detail' kasa.id %}" class="fw-bold text-primary">
+                                    {{ kasa.kasa_adi }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if kasa.kasa_tipi == 'Nakit' %}
+                                <i class="fas fa-money-bill-wave text-success me-2"></i>
+                                {% elif kasa.kasa_tipi == 'Banka' %}
+                                <i class="fas fa-university text-primary me-2"></i>
+                                {% elif kasa.kasa_tipi == 'Kredi Kartı' %}
+                                <i class="fas fa-credit-card text-info me-2"></i>
+                                {% elif kasa.kasa_tipi == 'Sanal POS' %}
+                                <i class="fas fa-terminal text-warning me-2"></i>
+                                {% else %}
+                                <i class="fas fa-wallet text-secondary me-2"></i>
+                                {% endif %}
+                                {{ kasa.get_kasa_tipi_display }}
+                            </td>
+                            <td>{{ kasa.currency_display_name }}</td>
+                            <td class="balance-cell {% if kasa.guncel_bakiye > 0 %}balance-positive{% elif kasa.guncel_bakiye < 0 %}balance-negative{% else %}balance-zero{% endif %}">
+                                {% if kasa.guncel_bakiye > 0 %}
+                                    <i class="fas fa-arrow-up me-1"></i>
+                                {% elif kasa.guncel_bakiye < 0 %}
+                                    <i class="fas fa-arrow-down me-1"></i>
+                                {% else %}
+                                    <i class="fas fa-minus me-1"></i>
+                                {% endif %}
+                                {{ kasa.guncel_bakiye|floatformat:2 }} {{ kasa.currency_code_for_balance }}
+                            </td>
+                            <td>{{ kasa.aciklama|truncatechars:50 }}</td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{% url 'kasa_detail' kasa.id %}" class="btn btn-sm btn-info">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <a href="{% url 'kasa_update' kasa.id %}" class="btn btn-sm btn-warning">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'kasa_delete' kasa.id %}" class="btn btn-sm btn-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center">Henüz kasa kaydı bulunmamaktadır.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+    $(document).ready(function() {
+        // Select2 için yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Excel export functionality
+        document.getElementById('exportExcel').addEventListener('click', function() {
+            // Excel export code will be implemented here
+            alert('Excel export functionality will be implemented here.');
+        });
+        
+        // PDF export functionality
+        document.getElementById('exportPdf').addEventListener('click', function() {
+            // PDF export code will be implemented here
+            alert('PDF export functionality will be implemented here.');
+        });
+    });
+</script>
+{% endblock %} 

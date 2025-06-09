@@ -1,0 +1,417 @@
+{% extends 'sefer_app/base.html' %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Uyarı Listesi - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .notification-list {
+        margin-top: 20px;
+    }
+    
+    .notification-item {
+        padding: 18px;
+        margin-bottom: 12px;
+        border-left: 4px solid;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    
+    .notification-item:hover {
+        transform: translateX(5px);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .notification-item.urgent {
+        border-left-color: #e74a3b;
+        background: #fdf2f2;
+    }
+    
+    .notification-item.warning {
+        border-left-color: #f6c23e;
+        background: #fef9f3;
+    }
+    
+    .notification-item.normal {
+        border-left-color: #1cc88a;
+        background: #f0f8f4;
+    }
+    
+    .item-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+    
+    .item-icon {
+        font-size: 20px;
+        width: 32px;
+        text-align: center;
+    }
+    
+    .item-title {
+        font-weight: 600;
+        font-size: 16px;
+        flex: 1;
+    }
+    
+    .days-left {
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: white;
+    }
+    
+    .urgent .days-left {
+        background: #e74a3b;
+    }
+    
+    .warning .days-left {
+        background: #f6c23e;
+    }
+    
+    .normal .days-left {
+        background: #1cc88a;
+    }
+    
+    .item-description {
+        color: #5a6c7d;
+        font-size: 14px;
+        line-height: 1.5;
+        margin-left: 44px;
+    }
+    
+    .item-actions {
+        margin-top: 10px;
+        margin-left: 44px;
+    }
+    
+    .print-btn {
+        background: #4e73df;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: 600;
+        box-shadow: 0 4px 15px rgba(78, 115, 223, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .print-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(78, 115, 223, 0.4);
+    }
+    
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+    
+    @media print {
+        .topbar, .sidebar, .footer, .card-header, .action-buttons, #accordionSidebar,
+        .navbar, .item-actions, .add-button, .scroll-to-top, #wrapper #content-wrapper #content .container-fluid > .d-sm-flex {
+            display: none !important;
+        }
+        
+        .notification-item {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        
+        #wrapper #content-wrapper {
+            margin-left: 0 !important;
+        }
+        
+        body {
+            padding: 0;
+            background: white !important;
+        }
+        
+        .container-fluid {
+            padding: 20px !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}Uyarı Listesi{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Uyarılar</h1>
+        <div>
+            <button class="print-btn me-2" onclick="window.print()">
+                <i class="fas fa-print fa-sm text-white-50 me-1"></i> 
+                PDF olarak kaydet
+            </button>
+            <a href="{% url 'uyari_ekle' %}" class="btn btn-sm btn-primary shadow-sm add-button">
+                <i class="fas fa-plus fa-sm text-white-50 me-1"></i> Yeni Uyarı Ekle
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtreler -->
+    <div class="card shadow mb-4 action-buttons">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Filtreler</h6>
+            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
+        <div class="collapse" id="filterCollapse">
+            <div class="card-body">
+                <form method="get" class="row gx-3 gy-2 align-items-center">
+                    <div class="col-md-3 mb-3">
+                        <label for="arac">Araç</label>
+                        <select name="arac" id="arac" class="form-control select2">
+                            <option value="">Tümü</option>
+                            {% for arac in araclar %}
+                                <option value="{{ arac.id }}" {% if request.GET.arac == arac.id|stringformat:"i" %}selected{% endif %}>
+                                    {{ arac.plaka }} - {{ arac.marka }} {{ arac.model }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="uyari_turu">Uyarı Türü</label>
+                        <select name="uyari_turu" id="uyari_turu" class="form-control select2">
+                            <option value="">Tümü</option>
+                            <option value="muayene" {% if request.GET.uyari_turu == 'muayene' %}selected{% endif %}>Muayene</option>
+                            <option value="sigorta" {% if request.GET.uyari_turu == 'sigorta' %}selected{% endif %}>Sigorta</option>
+                            <option value="bakim" {% if request.GET.uyari_turu == 'bakim' %}selected{% endif %}>Bakım</option>
+                            <option value="vergi" {% if request.GET.uyari_turu == 'vergi' %}selected{% endif %}>Vergi</option>
+                            <option value="diger" {% if request.GET.uyari_turu == 'diger' %}selected{% endif %}>Diğer</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="oncelik">Öncelik</label>
+                        <select name="oncelik" id="oncelik" class="form-control select2">
+                            <option value="">Tümü</option>
+                            <option value="yuksek" {% if request.GET.oncelik == 'yuksek' %}selected{% endif %}>Yüksek</option>
+                            <option value="orta" {% if request.GET.oncelik == 'orta' %}selected{% endif %}>Orta</option>
+                            <option value="dusuk" {% if request.GET.oncelik == 'dusuk' %}selected{% endif %}>Düşük</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="durum">Durum</label>
+                        <select name="durum" id="durum" class="form-control select2">
+                            <option value="">Tümü</option>
+                            <option value="aktif" {% if request.GET.durum == 'aktif' %}selected{% endif %}>Aktif</option>
+                            <option value="tamamlandi" {% if request.GET.durum == 'tamamlandi' %}selected{% endif %}>Tamamlandı</option>
+                            <option value="ertelendi" {% if request.GET.durum == 'ertelendi' %}selected{% endif %}>Ertelendi</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="tarih_araligi">Tarih Aralığı</label>
+                        <div class="input-group">
+                            <input type="text" name="baslangic_tarihi" class="form-control datepicker" value="{{ request.GET.baslangic_tarihi|default:'' }}" placeholder="Başlangıç">
+                            <span class="input-group-text">-</span>
+                            <input type="text" name="bitis_tarihi" class="form-control datepicker" value="{{ request.GET.bitis_tarihi|default:'' }}" placeholder="Bitiş">
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3 d-flex align-items-end justify-content-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search fa-sm me-1"></i> Filtrele
+                        </button>
+                        <a href="{% url 'uyari_list' %}" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt fa-sm me-1"></i> Sıfırla
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Uyarı Listesi -->
+    <div class="notification-list">
+        {% if uyarilar %}
+            {% for uyari in uyarilar %}
+                {% with oncelik_class=uyari.oncelik|oncelik_sinifi %}
+                <div class="notification-item {{ oncelik_class }}">
+                    <div class="item-header">
+                        <span class="item-icon">
+                            {% if uyari.uyari_turu == 'muayene' %}
+                                <i class="fas fa-clipboard-check"></i>
+                            {% elif uyari.uyari_turu == 'sigorta' %}
+                                <i class="fas fa-shield-alt"></i>
+                            {% elif uyari.uyari_turu == 'bakim' %}
+                                <i class="fas fa-tools"></i>
+                            {% elif uyari.uyari_turu == 'vergi' %}
+                                <i class="fas fa-file-invoice-dollar"></i>
+                            {% else %}
+                                <i class="fas fa-bell"></i>
+                            {% endif %}
+                        </span>
+                        <span class="item-title">{{ uyari.arac.plaka }} - 
+                            {% if uyari.uyari_turu == 'muayene' %}Muayene
+                            {% elif uyari.uyari_turu == 'sigorta' %}Sigorta
+                            {% elif uyari.uyari_turu == 'bakim' %}Bakım
+                            {% elif uyari.uyari_turu == 'vergi' %}Vergi
+                            {% elif uyari.uyari_turu == 'lastik' %}Lastik Değişimi
+                            {% elif uyari.uyari_turu == 'yag' %}Yağ Değişimi
+                            {% elif uyari.uyari_turu == 'belge' %}Belge Yenileme
+                            {% else %}Diğer
+                            {% endif %}
+                        </span>
+                        {% if uyari.kalan_gun is not None %}
+                            <span class="days-left">
+                                {% if uyari.kalan_gun < 0 %}
+                                    {{ uyari.kalan_gun|abs_value }} Gün Gecikme
+                                {% elif uyari.kalan_gun == 0 %}
+                                    Bugün
+                                {% else %}
+                                    {{ uyari.kalan_gun }} Gün Kaldı
+                                {% endif %}
+                            </span>
+                        {% endif %}
+                    </div>
+                    <div class="item-description">
+                        <p>{{ uyari.uyari_mesaji }}</p>
+                        <div class="mt-2 text-muted small">
+                            <span class="me-3"><i class="far fa-calendar-alt"></i> Son Tarih: {% if uyari.son_tarih %}{{ uyari.son_tarih|date:"d.m.Y" }}{% else %}Belirtilmemiş{% endif %}</span>
+                            <span class="badge bg-{{ uyari.durum_rengi }} me-2">{{ uyari.get_durum_display }}</span>
+                        </div>
+                        {% if uyari.notlar %}
+                            <div class="mt-2 text-muted small">
+                                <i class="far fa-sticky-note"></i> Not: {{ uyari.notlar }}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="item-actions">
+                        <a href="{% url 'uyari_detay' uyari.id %}" class="btn btn-sm btn-info">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        <a href="{% url 'uyari_guncelle' uyari.id %}" class="btn btn-sm btn-primary">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        {% if uyari.durum == 'aktif' %}
+                            <a href="{% url 'uyari_tamamla' uyari.id %}" class="btn btn-sm btn-success">
+                                <i class="fas fa-check"></i> Tamamla
+                            </a>
+                        {% endif %}
+                        <a href="{% url 'uyari_delete' uyari.id %}" class="btn btn-sm btn-danger">
+                            <i class="fas fa-trash"></i>
+                        </a>
+                    </div>
+                </div>
+                {% endwith %}
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i> Uyarı bulunamadı. Yeni uyarı ekleyebilirsiniz.
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Sayfalama -->
+    {% if uyarilar.has_other_pages %}
+    <nav aria-label="Page navigation" class="mt-4 action-buttons">
+        <ul class="pagination justify-content-center">
+            {% if uyarilar.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1{% if request.GET.arac %}&arac={{ request.GET.arac }}{% endif %}{% if request.GET.uyari_turu %}&uyari_turu={{ request.GET.uyari_turu }}{% endif %}{% if request.GET.oncelik %}&oncelik={{ request.GET.oncelik }}{% endif %}{% if request.GET.durum %}&durum={{ request.GET.durum }}{% endif %}" aria-label="First">
+                        <span aria-hidden="true">&laquo;&laquo;</span>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ uyarilar.previous_page_number }}{% if request.GET.arac %}&arac={{ request.GET.arac }}{% endif %}{% if request.GET.uyari_turu %}&uyari_turu={{ request.GET.uyari_turu }}{% endif %}{% if request.GET.oncelik %}&oncelik={{ request.GET.oncelik }}{% endif %}{% if request.GET.durum %}&durum={{ request.GET.durum }}{% endif %}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+            {% endif %}
+
+            {% for i in uyarilar.paginator.page_range %}
+                {% if uyarilar.number == i %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ i }}</span>
+                    </li>
+                {% else %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ i }}{% if request.GET.arac %}&arac={{ request.GET.arac }}{% endif %}{% if request.GET.uyari_turu %}&uyari_turu={{ request.GET.uyari_turu }}{% endif %}{% if request.GET.oncelik %}&oncelik={{ request.GET.oncelik }}{% endif %}{% if request.GET.durum %}&durum={{ request.GET.durum }}{% endif %}">{{ i }}</a>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if uyarilar.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ uyarilar.next_page_number }}{% if request.GET.arac %}&arac={{ request.GET.arac }}{% endif %}{% if request.GET.uyari_turu %}&uyari_turu={{ request.GET.uyari_turu }}{% endif %}{% if request.GET.oncelik %}&oncelik={{ request.GET.oncelik }}{% endif %}{% if request.GET.durum %}&durum={{ request.GET.durum }}{% endif %}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ uyarilar.paginator.num_pages }}{% if request.GET.arac %}&arac={{ request.GET.arac }}{% endif %}{% if request.GET.uyari_turu %}&uyari_turu={{ request.GET.uyari_turu }}{% endif %}{% if request.GET.oncelik %}&oncelik={{ request.GET.oncelik }}{% endif %}{% if request.GET.durum %}&durum={{ request.GET.durum }}{% endif %}" aria-label="Last">
+                        <span aria-hidden="true">&raquo;&raquo;</span>
+                    </a>
+                </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const items = document.querySelectorAll('.notification-item');
+        items.forEach((item, index) => {
+            item.style.opacity = '0';
+            item.style.transform = 'translateY(20px)';
+            setTimeout(() => {
+                item.style.transition = 'all 0.4s ease';
+                item.style.opacity = '1';
+                item.style.transform = 'translateY(0)';
+            }, index * 100);
+        });
+        
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: "tr",
+            allowInput: true
+        });
+        
+        // Filter açılışı kontrolü
+        if(document.querySelector('[name="arac"]').value || 
+           document.querySelector('[name="uyari_turu"]').value ||
+           document.querySelector('[name="oncelik"]').value ||
+           document.querySelector('[name="durum"]').value ||
+           document.querySelector('[name="baslangic_tarihi"]').value ||
+           document.querySelector('[name="bitis_tarihi"]').value) {
+            $('#filterCollapse').addClass('show');
+        }
+    });
+</script>
+{% endblock %} 

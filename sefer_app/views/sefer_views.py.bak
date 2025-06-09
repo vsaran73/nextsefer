@@ -1,0 +1,1374 @@
+"""
+Trip (Sefer) related views.
+"""
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.utils import timezone
+from django.db.models import Sum, Q, Count, F, DecimalField
+from django.db.models.functions import Coalesce
+from django.http import HttpResponse
+from datetime import datetime
+from decimal import Decimal
+import os
+import io
+import json
+
+# Import ReportLab modules for PDF generation
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import cm, inch
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.piecharts import Pie
+from reportlab.graphics.charts.legends import Legend
+from reportlab.graphics import renderPDF
+
+# Import for Excel export
+import xlwt
+
+from ..models import (
+    Seferler, Firmalar, Faturalar, SeferMasraf, Kasalar, 
+    ParaBirimleri, Personeller, AracBilgileri, Ulkeler, Sehirler
+)
+from .helpers import safe_decimal, register_ttf_fonts, turkish_safe_text, get_first_two_words
+
+# Define currency symbols
+CURRENCY_SYMBOLS = {
+    'EUR': '€',
+    'USD': '$',
+    'TRY': '₺',
+    'GBP': '£'
+}
+
+# Helper function to convert Turkish characters for PDF
+def convert_turkish_chars(text):
+    if not text:
+        return ""
+    replacements = {
+        'ç': 'c', 'Ç': 'C',
+        'ğ': 'g', 'Ğ': 'G',
+        'ı': 'i', 'İ': 'I',
+        'ö': 'o', 'Ö': 'O',
+        'ş': 's', 'Ş': 'S',
+        'ü': 'u', 'Ü': 'U'
+    }
+    for char, repl in replacements.items():
+        text = text.replace(char, repl)
+    return text
+
+# Helper function to format currency in European style (1.234,56)
+def format_currency(value, decimal_places=2):
+    """Format a number in European style with dot as thousands separator and comma as decimal separator."""
+    if value is None:
+        return "0,00"
+    
+    # Convert to float if it's a Decimal
+    if isinstance(value, Decimal):
+        value = float(value)
+        
+    # Format with specified decimal places
+    formatted = f"{value:,.{decimal_places}f}"
+    
+    # Replace decimal point with temporary marker
+    formatted = formatted.replace('.', 'DECIMAL_POINT')
+    
+    # Replace thousands separator with dot
+    formatted = formatted.replace(',', '.')
+    
+    # Replace decimal marker with comma
+    formatted = formatted.replace('DECIMAL_POINT', ',')
+    
+    return formatted
+
+def sefer_list(request):
+    """List all trips with filtering options."""
+    # Base queryset
+    seferler = Seferler.objects.all().order_by('-cikis_tarihi')
+    
+    # Get filter parameters
+    durum = request.GET.get('durum', '')
+    baslangic_tarihi = request.GET.get('baslangic_tarihi', '')
+    bitis_tarihi = request.GET.get('bitis_tarihi', '')
+    firma_id = request.GET.get('firma', '')
+    personel_id = request.GET.get('personel', '')
+    arac_id = request.GET.get('arac', '')
+    arama = request.GET.get('arama', '')
+    export = request.GET.get('export', '')
+    
+    # Apply filters
+    if durum:
+        seferler = seferler.filter(durum=durum)
+        
+    if baslangic_tarihi:
+        seferler = seferler.filter(cikis_tarihi__gte=baslangic_tarihi)
+        
+    if bitis_tarihi:
+        seferler = seferler.filter(cikis_tarihi__lte=bitis_tarihi)
+        
+    if firma_id:
+        seferler = seferler.filter(firma_id=firma_id)
+        
+    if personel_id:
+        seferler = seferler.filter(personel_id=personel_id)
+        
+    if arac_id:
+        seferler = seferler.filter(arac_id=arac_id)
+    
+    if arama:
+        seferler = seferler.filter(
+            Q(rota__icontains=arama) | 
+            Q(aciklama__icontains=arama) |
+            Q(firma__FirmaAdi__icontains=arama)
+        )
+    
+    # Check if export is requested
+    if export == 'pdf':
+        return export_sefer_pdf(request, seferler, baslangic_tarihi, bitis_tarihi)
+    elif export == 'excel':
+        return export_sefer_excel(request, seferler, baslangic_tarihi, bitis_tarihi)
+    
+    # Count by status for statistics
+    aktif_seferler_sayisi = Seferler.objects.filter(durum='Aktif').count()
+    tamamlanan_seferler_sayisi = Seferler.objects.filter(durum='Tamamlandı').count()
+    iptal_edilen_seferler_sayisi = Seferler.objects.filter(durum='İptal Edildi').count()
+    
+    # Calculate total kilometers - fixed with output_field to DecimalField
+    toplam_km = Seferler.objects.aggregate(toplam_km=Coalesce(Sum('mesafe'), 0, output_field=DecimalField()))['toplam_km'] or 0
+    
+    # Calculate total profit (invoice income - expenses)
+    # First, get all invoice amounts related to trips - fixed with output_field to DecimalField
+    fatura_gelirleri = Faturalar.objects.filter(Sefer__isnull=False).aggregate(
+        toplam=Coalesce(Sum('ToplamTutar'), 0, output_field=DecimalField())
+    )['toplam'] or 0
+    
+    # Then get all expenses related to trips - fixed with output_field to DecimalField
+    sefer_masraflari = SeferMasraf.objects.aggregate(
+        toplam=Coalesce(Sum('TutarEUR'), 0, output_field=DecimalField())
+    )['toplam'] or 0
+    
+    # Calculate profit
+    toplam_kar = fatura_gelirleri - sefer_masraflari
+    
+    # Get related data for filter dropdowns
+    firmalar = Firmalar.objects.filter(AktifMi=True).order_by('FirmaAdi')
+    personeller = Personeller.objects.all().order_by('PerAd')
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    
+    context = {
+        'seferler': seferler,
+        'firmalar': firmalar,
+        'personeller': personeller,
+        'araclar': araclar,
+        'aktif_seferler_sayisi': aktif_seferler_sayisi,
+        'tamamlanan_seferler_sayisi': tamamlanan_seferler_sayisi,
+        'iptal_edilen_seferler_sayisi': iptal_edilen_seferler_sayisi,
+        'toplam_sefer_sayisi': seferler.count(),
+        'toplam_km': toplam_km,
+        'toplam_kar': toplam_kar,
+        # Keep current filters for pagination
+        'durum_filtre': durum,
+        'baslangic_tarihi_filtre': baslangic_tarihi,
+        'bitis_tarihi_filtre': bitis_tarihi,
+        'firma_filtre': firma_id,
+        'personel_filtre': personel_id,
+        'arac_filtre': arac_id,
+        'arama_filtre': arama,
+    }
+    return render(request, 'sefer_app/sefer_list.html', context)
+
+def export_sefer_pdf(request, seferler, baslangic_tarihi=None, bitis_tarihi=None):
+    """Generate PDF document for trip list."""
+    # Register fonts with Turkish character support
+    font_name = register_ttf_fonts()
+    font_bold = font_name + '-Bold' if font_name != 'Helvetica' else 'Helvetica-Bold'
+    
+    # Create the HTTP response
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = 'attachment; filename="seferler_listesi.pdf"'
+    
+    # Create the PDF object
+    doc = SimpleDocTemplate(
+        response,
+        pagesize=A4, 
+        leftMargin=0.5*cm, 
+        rightMargin=0.5*cm, 
+        topMargin=0.5*cm, 
+        bottomMargin=0.5*cm
+    )
+    
+    # Container for the 'Flowable' objects
+    elements = []
+    
+    # Define styles
+    styles = getSampleStyleSheet()
+    
+    # Create custom styles with Turkish character support
+    title_style = ParagraphStyle(
+        name='TitleStyle', 
+        parent=styles['Heading1'], 
+        alignment=TA_CENTER,
+        fontName=font_bold,
+        fontSize=16
+    )
+    
+    subtitle_style = ParagraphStyle(
+        name='SubtitleStyle',
+        parent=styles['Heading2'],
+        alignment=TA_CENTER,
+        fontName=font_bold,
+        fontSize=12
+    )
+    
+    normal_style = ParagraphStyle(
+        name='NormalStyle',
+        parent=styles['Normal'],
+        fontName=font_name,
+        fontSize=9
+    )
+    
+    footer_style = ParagraphStyle(
+        name='FooterStyle',
+        parent=styles['Normal'],
+        fontName=font_name,
+        fontSize=8,
+        alignment=TA_CENTER
+    )
+    
+    # Add title
+    elements.append(Paragraph("Next Global Logistic", title_style))
+    elements.append(Spacer(1, 0.2*cm))
+    elements.append(Paragraph(turkish_safe_text("SEFER LİSTESİ"), subtitle_style))
+    
+    # Add date range if specified
+    if baslangic_tarihi and bitis_tarihi:
+        date_text = turkish_safe_text(f"Dönem: {baslangic_tarihi} - {bitis_tarihi}")
+        elements.append(Paragraph(date_text, normal_style))
+    
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Create data for the trip list table
+    data = [
+        [
+            turkish_safe_text("Sefer No"), 
+            turkish_safe_text("Tarih"), 
+            turkish_safe_text("Rota"), 
+            turkish_safe_text("Müşteri"),
+            turkish_safe_text("Plaka"), 
+            turkish_safe_text("Şoför"),
+            turkish_safe_text("Tutar"),
+            turkish_safe_text("Durum")
+        ]
+    ]
+    
+    # Add sefer data to table
+    for sefer in seferler:
+        # Format dates
+        tarih = sefer.cikis_tarihi.strftime("%d.%m.%Y") if sefer.cikis_tarihi else "-"
+        
+        # Format route
+        rota = f"{turkish_safe_text(sefer.baslangic_sehri.sehir_adi) if sefer.baslangic_sehri else '-'} → {turkish_safe_text(sefer.bitis_sehri.sehir_adi) if sefer.bitis_sehri else '-'}"
+        
+        # Get customer name - only first two words
+        musteri = turkish_safe_text(get_first_two_words(sefer.firma.FirmaAdi) if sefer.firma else "-")
+        
+        # Get license plate
+        plaka = sefer.arac.plaka if sefer.arac else "-"
+        
+        # Get driver name - only first two words
+        sofor_tam_ad = f"{sefer.personel.PerAd} {sefer.personel.PerSoyad}" if sefer.personel else "-"
+        sofor = turkish_safe_text(get_first_two_words(sofor_tam_ad))
+        
+        # Format invoice amount
+        fatura = Faturalar.objects.filter(Sefer=sefer).first()
+        if fatura and fatura.ToplamTutar:
+            tutar = f"{format_currency(fatura.ToplamTutar)} {CURRENCY_SYMBOLS.get(fatura.ParaBirimi, fatura.ParaBirimi)}"
+        else:
+            tutar = "-"
+        
+        # Get status
+        durum = turkish_safe_text(sefer.durum)
+        
+        # Add row to data
+        data.append([
+            str(sefer.id),
+            tarih,
+            rota,
+            musteri,
+            plaka,
+            sofor,
+            tutar,
+            durum
+        ])
+    
+    # Create the table
+    col_widths = [1.5*cm, 2*cm, 4*cm, 3*cm, 2*cm, 3*cm, 2*cm, 2.5*cm]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    
+    # Apply styles
+    style = TableStyle([
+        # Header
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), font_bold),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        
+        # Body
+        ('FONTNAME', (0, 1), (-1, -1), font_name),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('ALIGN', (-2, 1), (-2, -1), 'RIGHT'),  # Right-align amounts
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        
+        # Grid
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.grey),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+    ])
+    table.setStyle(style)
+    
+    # Add the table to elements
+    elements.append(table)
+    
+    # Add footer with generation date
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph(turkish_safe_text(f"Oluşturulma Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), footer_style))
+    elements.append(Paragraph(turkish_safe_text(f"© {datetime.now().year} NextSefer"), footer_style))
+    
+    # Build the document
+    doc.build(elements)
+    
+    return response
+
+def export_sefer_excel(request, seferler, baslangic_tarihi=None, bitis_tarihi=None):
+    """Export trip list as Excel."""
+    response = HttpResponse(content_type='application/ms-excel')
+    response['Content-Disposition'] = f'attachment; filename="seferler_listesi.xls"'
+    
+    wb = xlwt.Workbook(encoding='utf-8')
+    ws = wb.add_sheet('Seferler Listesi')
+    
+    # Sheet header, first row
+    row_num = 0
+    font_style = xlwt.XFStyle()
+    font_style.font.bold = True
+    
+    # Add title to Excel
+    ws.write(row_num, 0, "Next Global Logistic", font_style)
+    row_num += 1
+    
+    # Add report title
+    if baslangic_tarihi and bitis_tarihi:
+        report_title = f"Seferler Listesi ({baslangic_tarihi} - {bitis_tarihi})"
+    else:
+        report_title = "Tüm Seferler Listesi"
+    ws.write(row_num, 0, report_title, font_style)
+    row_num += 1
+    
+    # Add report generation date
+    ws.write(row_num, 0, f"Rapor Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')}", font_style)
+    row_num += 2  # Add an extra row for spacing
+    
+    # Set column header
+    columns = ['Sefer Kodu', 'Firma', 'Başlangıç', 'Varış', 'Çıkış Tarihi', 'Varış Tarihi', 
+               'Araç', 'Sürücü', 'Durum']
+    
+    for col_num in range(len(columns)):
+        ws.write(row_num, col_num, columns[col_num], font_style)
+    
+    # Sheet body, remaining rows
+    font_style = xlwt.XFStyle()
+    
+    # Add trip data
+    for sefer in seferler:
+        row_num += 1
+        baslangic = f"{sefer.baslangic_sehri.sehir_adi}, {sefer.baslangic_ulkesi.ulke_kodu}" if sefer.baslangic_sehri and sefer.baslangic_ulkesi else "-"
+        varis = f"{sefer.bitis_sehri.sehir_adi}, {sefer.bitis_ulkesi.ulke_kodu}" if sefer.bitis_sehri and sefer.bitis_ulkesi else "-"
+        cikis_tarihi = sefer.cikis_tarihi.strftime('%d.%m.%Y') if sefer.cikis_tarihi else "-"
+        varis_tarihi = sefer.tahmini_varis_tarihi.strftime('%d.%m.%Y') if sefer.tahmini_varis_tarihi else "-"
+        
+        col_num = 0
+        ws.write(row_num, col_num, sefer.sefer_kodu); col_num += 1
+        ws.write(row_num, col_num, get_first_two_words(sefer.firma.FirmaAdi) if sefer.firma else "-"); col_num += 1
+        ws.write(row_num, col_num, baslangic); col_num += 1
+        ws.write(row_num, col_num, varis); col_num += 1
+        ws.write(row_num, col_num, cikis_tarihi); col_num += 1
+        ws.write(row_num, col_num, varis_tarihi); col_num += 1
+        ws.write(row_num, col_num, sefer.arac.plaka if sefer.arac else "-"); col_num += 1
+        sofor_adi = f"{sefer.personel.PerAd} {sefer.personel.PerSoyad}" if sefer.personel else "-"
+        ws.write(row_num, col_num, get_first_two_words(sofor_adi)); col_num += 1
+        ws.write(row_num, col_num, sefer.durum)
+    
+    wb.save(response)
+    return response
+
+def sefer_detail(request, pk):
+    """Display trip details."""
+    # Get the trip
+    sefer = get_object_or_404(Seferler, pk=pk)
+    
+    # Get related data and filters
+    faturalar = Faturalar.objects.filter(Sefer=sefer).order_by('-FaturaTarihi')
+    masraflar = SeferMasraf.objects.filter(Sefer=sefer).order_by('-Tarih')
+    
+    # Calculate total invoice amount and expense amount
+    toplam_fatura = faturalar.aggregate(total=Coalesce(Sum('ToplamTutar'), 0, output_field=DecimalField()))['total'] or 0
+    toplam_masraf_eur = masraflar.aggregate(total=Coalesce(Sum('TutarEUR'), 0, output_field=DecimalField()))['total'] or 0
+    
+    # Get cash registers and currencies for the expense modal
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    para_birimleri = ParaBirimleri.objects.all().order_by('kod')
+    
+    # Calculate remaining budget and expense ratio
+    kalan_butce = sefer.ucret - toplam_masraf_eur if sefer.ucret else 0
+    
+    # Group expenses by type for analysis
+    masraf_tipleri = masraflar.values('MasrafTipi').annotate(
+        toplam=Sum('TutarEUR')
+    ).order_by('-toplam')
+    
+    # Prepare chart data
+    masraf_labels = [tip['MasrafTipi'] for tip in masraf_tipleri]
+    masraf_values = [float(tip['toplam']) for tip in masraf_tipleri]
+    masraf_data = json.dumps({
+        'labels': masraf_labels,
+        'values': masraf_values
+    })
+    
+    # Calculate time duration if we have both dates
+    sure = None
+    try:
+        if sefer.cikis_tarihi and hasattr(sefer, 'donus_tarihi') and sefer.donus_tarihi:
+            delta = sefer.donus_tarihi - sefer.cikis_tarihi
+            sure = delta.days
+        elif sefer.cikis_tarihi and hasattr(sefer, 'varis_tarihi') and sefer.varis_tarihi:
+            # Try with varis_tarihi if donus_tarihi doesn't exist
+            delta = sefer.varis_tarihi - sefer.cikis_tarihi
+            sure = delta.days
+    except Exception as e:
+        # Just log the error and continue without calculating duration
+        print(f"Error calculating trip duration: {str(e)}")
+        sure = None
+    
+    # Get company info
+    firma = sefer.firma if hasattr(sefer, 'firma') else None
+    
+    # Get today's date for default value in the expense form
+    today = timezone.now()
+    
+    context = {
+        'sefer': sefer,
+        'faturalar': faturalar,
+        'masraflar': masraflar,
+        'toplam_fatura': toplam_fatura,
+        'toplam_masraf_eur': toplam_masraf_eur,
+        'kalan_butce': kalan_butce,
+        'masraf_tipleri': masraf_tipleri,
+        'masraf_data': masraf_data,
+        'firma': firma,
+        'sure': sure,
+        'today': today,
+        'para_birimleri': para_birimleri,
+        'kasalar': kasalar,
+    }
+    return render(request, 'sefer_app/sefer_detail.html', context)
+
+def sefer_detail_pdf(request, pk):
+    """Generate PDF report with full trip details."""
+    # Register fonts with Turkish character support
+    font_name = register_ttf_fonts()
+    font_bold = font_name + '-Bold' if font_name != 'Helvetica' else 'Helvetica-Bold'
+    
+    sefer = get_object_or_404(Seferler, pk=pk)
+    
+    # Get related data
+    masraflar = SeferMasraf.objects.filter(Sefer=sefer).order_by('Tarih')
+    faturalar = Faturalar.objects.filter(Sefer=sefer)
+    
+    # Calculate totals
+    toplam_masraf = masraflar.aggregate(total=Coalesce(Sum('TutarEUR'), 0, output_field=DecimalField()))['total'] or 0
+    toplam_fatura = faturalar.aggregate(total=Coalesce(Sum('ToplamTutar'), 0, output_field=DecimalField()))['total'] or 0
+    net_kar = toplam_fatura - toplam_masraf
+    
+    # Create the HttpResponse object with PDF headers
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="sefer_{pk}_detay.pdf"'
+    
+    # Create the PDF object
+    doc = SimpleDocTemplate(
+        response,
+        pagesize=A4,
+        leftMargin=1*cm,
+        rightMargin=1*cm,
+        topMargin=1*cm,
+        bottomMargin=1*cm
+    )
+    
+    # Define styles
+    styles = getSampleStyleSheet()
+    
+    # Create custom styles with Turkish character support
+    title_style = ParagraphStyle(
+        name='TitleStyle', 
+        parent=styles['Heading1'], 
+        alignment=TA_CENTER,
+        fontName=font_bold
+    )
+    
+    subtitle_style = ParagraphStyle(
+        name='SubtitleStyle',
+        parent=styles['Heading2'],
+        fontName=font_bold
+    )
+    
+    normal_style = ParagraphStyle(
+        name='NormalStyle',
+        parent=styles['Normal'],
+        fontName=font_name
+    )
+    
+    # Create content elements
+    elements = []
+    
+    # Add title
+    elements.append(Paragraph("Next Global Logistic", title_style))
+    elements.append(Spacer(1, 0.3*cm))
+    elements.append(Paragraph(turkish_safe_text(f"{sefer.sefer_kodu} DETAY RAPORU"), title_style))
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Add trip info
+    elements.append(Paragraph(turkish_safe_text("Sefer Bilgileri"), subtitle_style))
+    
+    # Basic trip info table
+    trip_data = [
+        [turkish_safe_text("Rota:"), turkish_safe_text(f"{sefer.baslangic_sehri.sehir_adi if sefer.baslangic_sehri else '-'} → {sefer.bitis_sehri.sehir_adi if sefer.bitis_sehri else '-'}")],
+        [turkish_safe_text("Çıkış Tarihi:"), sefer.cikis_tarihi.strftime('%d.%m.%Y') if sefer.cikis_tarihi else '-'],
+        [turkish_safe_text("Varış Tarihi:"), sefer.varis_tarihi.strftime('%d.%m.%Y') if sefer.varis_tarihi else '-'],
+        [turkish_safe_text("Durum:"), turkish_safe_text(sefer.durum)],
+        [turkish_safe_text("Plaka:"), sefer.arac.plaka if sefer.arac else '-'],
+    ]
+    
+    # Add driver info
+    if sefer.personel:
+        trip_data.append([turkish_safe_text("Şoför:"), turkish_safe_text(get_first_two_words(f"{sefer.personel.PerAd} {sefer.personel.PerSoyad}"))])
+    
+    if sefer.firma:
+        trip_data.append([turkish_safe_text("Müşteri:"), turkish_safe_text(get_first_two_words(sefer.firma.FirmaAdi))])
+        
+    trip_table = Table(trip_data, colWidths=[4*cm, 12*cm])
+    trip_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTNAME', (0, 0), (0, -1), font_bold),
+        ('FONTNAME', (1, 0), (1, -1), font_name),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.3*cm),
+    ]))
+    elements.append(trip_table)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Financial summary
+    elements.append(Paragraph(turkish_safe_text("Finansal Özet"), subtitle_style))
+    
+    financial_data = [
+        [turkish_safe_text("Toplam Gelir (Faturalar):"), f"{format_currency(toplam_fatura)} EUR"],
+        [turkish_safe_text("Toplam Gider (Masraflar):"), f"{format_currency(toplam_masraf)} EUR"],
+        [turkish_safe_text("Net Kar/Zarar:"), f"{format_currency(net_kar)} EUR"],
+    ]
+    
+    financial_table = Table(financial_data, colWidths=[10*cm, 6*cm])
+    financial_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.palegreen if net_kar >= 0 else colors.lightpink),
+        ('FONTNAME', (0, 0), (0, -1), font_bold),
+        ('FONTNAME', (1, 0), (1, -1), font_bold),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+    ]))
+    elements.append(financial_table)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Expenses table
+    if masraflar.exists():
+        elements.append(Paragraph(turkish_safe_text("Masraflar"), subtitle_style))
+        
+        expense_data = [[
+            turkish_safe_text("Tarih"), 
+            turkish_safe_text("Tipi"), 
+            turkish_safe_text("Açıklama"), 
+            turkish_safe_text("Tutar (€)")
+        ]]
+        
+        for masraf in masraflar:
+            expense_data.append([
+                masraf.Tarih.strftime('%d.%m.%Y') if masraf.Tarih else '-',
+                turkish_safe_text(masraf.MasrafTipi if masraf.MasrafTipi else '-'),
+                turkish_safe_text(masraf.Aciklama) if masraf.Aciklama else '-',
+                f"{format_currency(masraf.Tutar)} {masraf.ParaBirimi}",
+            ])
+        
+        # Add total row
+        expense_data.append([
+            '',
+            '',
+            turkish_safe_text('TOPLAM'),
+            format_currency(toplam_masraf)
+        ])
+        
+        expense_table = Table(expense_data, colWidths=[2.5*cm, 3*cm, 8.5*cm, 2*cm])
+        expense_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), font_bold),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (3, 1), (3, -1), 'RIGHT'),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTNAME', (0, -1), (-1, -1), font_bold),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ]))
+        
+        elements.append(expense_table)
+        elements.append(Spacer(1, 0.5*cm))
+    
+    # Invoices table
+    if faturalar.exists():
+        elements.append(Paragraph(turkish_safe_text("Faturalar"), subtitle_style))
+        
+        invoice_data = [[
+            turkish_safe_text("Fatura No"), 
+            turkish_safe_text("Müşteri"), 
+            turkish_safe_text("Tarih"), 
+            turkish_safe_text("Durum"),
+            turkish_safe_text("Tutar")
+        ]]
+        
+        for fatura in faturalar:
+            para_birimi = CURRENCY_SYMBOLS.get(fatura.ParaBirimi, fatura.ParaBirimi)
+            invoice_data.append([
+                fatura.FaturaNo or '-',
+                turkish_safe_text(get_first_two_words(fatura.Firma.FirmaAdi) if fatura.Firma else '-'),
+                fatura.FaturaTarihi.strftime('%d.%m.%Y') if fatura.FaturaTarihi else '-',
+                turkish_safe_text(fatura.OdemeDurumu),
+                f"{format_currency(fatura.ToplamTutar)} {para_birimi}"
+            ])
+        
+        invoice_table = Table(invoice_data, colWidths=[2*cm, 6*cm, 2.5*cm, 3*cm, 2.5*cm])
+        invoice_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), font_bold),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (4, 1), (4, -1), 'RIGHT'),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ]))
+        
+        elements.append(invoice_table)
+    
+    # Add footer
+    elements.append(Spacer(1, 1*cm))
+    elements.append(Paragraph(turkish_safe_text(f"Oluşturulma Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), normal_style))
+    elements.append(Paragraph(turkish_safe_text(f"© {datetime.now().year} NextSefer - Sefer Detay Raporu"), normal_style))
+    
+    # Build the PDF
+    doc.build(elements)
+    
+    return response
+
+def generate_sefer_kodu():
+    """Generate a trip code in the format SEF-MMYY-XXXX."""
+    today = datetime.now()
+    month_year = f"{today.month:02d}{str(today.year)[-2:]}"  # MMYY format
+    prefix = f"SEF-{month_year}-"
+    
+    # Check for existing document numbers with this prefix
+    latest_sefer = Seferler.objects.filter(
+        sefer_kodu__startswith=prefix
+    ).order_by('-sefer_kodu').first()
+    
+    if latest_sefer and latest_sefer.sefer_kodu and len(latest_sefer.sefer_kodu) >= len(prefix) + 4:
+        try:
+            # Extract the numeric part and increment
+            number_part = latest_sefer.sefer_kodu[len(prefix):]
+            number = int(number_part) + 1
+        except (ValueError, IndexError):
+            # If parsing fails, start from 1
+            number = 1
+    else:
+        # No existing document, start from 1
+        number = 1
+    
+    # Format with leading zeros to ensure 4 digits
+    return f"{prefix}{number:04d}"
+
+def sefer_create(request):
+    """Create a new trip."""
+    firmalar = Firmalar.objects.filter(AktifMi=True).order_by('FirmaAdi')
+    personeller = Personeller.objects.all().order_by('PerAd')
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    ulkeler = Ulkeler.objects.all().order_by('ulke_adi')
+    
+    # Generate default sefer_kodu in SEF-MMYY-XXXX format
+    default_sefer_kodu = generate_sefer_kodu()
+    
+    # Common cargo types for international transportation
+    cargo_types = [
+        "Genel Kargo (General Cargo)",
+        "Tekstil Ürünleri (Textiles)",
+        "Otomotiv Parçaları (Automotive Parts)",
+        "Elektronik Ürünler (Electronics)",
+        "Gıda Ürünleri (Food Products)", 
+        "Kimyasal Ürünler (Chemicals)",
+        "İnşaat Malzemeleri (Construction Materials)",
+        "Beyaz Eşya (Home Appliances)",
+        "Makineler (Machinery)",
+        "Mobilya (Furniture)",
+        "Plastik Ürünler (Plastic Products)",
+        "Metal Ürünler (Metal Products)",
+        "Soğuk Zincir (Cold Chain Cargo)",
+        "Tehlikeli Madde (Dangerous Goods)",
+        "Konteyner (Container)",
+        "Diğer (Other)"
+    ]
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            sefer_kodu = request.POST.get('sefer_kodu')
+            # If no sefer_kodu provided, generate one
+            if not sefer_kodu:
+                sefer_kodu = generate_sefer_kodu()
+                
+            firma_id = request.POST.get('firma')
+            yuk_cinsi = request.POST.get('yuk_cinsi')
+            personel_id = request.POST.get('personel')
+            arac_id = request.POST.get('arac')
+            durum = request.POST.get('durum', 'Aktif')
+            
+            cikis_tarihi = request.POST.get('cikis_tarihi')
+            tahmini_varis_tarihi = request.POST.get('tahmini_varis_tarihi')
+            
+            baslangic_ulkesi_id = request.POST.get('baslangic_ulkesi')
+            baslangic_sehri_id = request.POST.get('baslangic_sehri')
+            bitis_ulkesi_id = request.POST.get('bitis_ulkesi')
+            bitis_sehri_id = request.POST.get('bitis_sehri')
+            
+            guzergah = request.POST.get('guzergah', '')
+            baslangic_km = request.POST.get('baslangic_km') or None
+            bitis_km = request.POST.get('bitis_km') or None
+            mesafe = safe_decimal(request.POST.get('mesafe', '0'))
+            ucret = safe_decimal(request.POST.get('ucret', '0'))
+            
+            # Create trip
+            sefer = Seferler(
+                sefer_kodu=sefer_kodu,
+                firma_id=firma_id,
+                yuk_cinsi=yuk_cinsi,
+                personel_id=personel_id,
+                arac_id=arac_id,
+                durum=durum,
+                cikis_tarihi=cikis_tarihi,
+                tahmini_varis_tarihi=tahmini_varis_tarihi,
+                baslangic_ulkesi_id=baslangic_ulkesi_id,
+                baslangic_sehri_id=baslangic_sehri_id,
+                bitis_ulkesi_id=bitis_ulkesi_id,
+                bitis_sehri_id=bitis_sehri_id,
+                guzergah=guzergah,
+                baslangic_km=baslangic_km,
+                bitis_km=bitis_km,
+                mesafe=mesafe,
+                ucret=ucret
+            )
+            sefer.save()
+            
+            messages.success(request, 'Sefer başarıyla oluşturuldu.')
+            return redirect('sefer_detail', pk=sefer.id)
+            
+        except Exception as e:
+            messages.error(request, f'Sefer oluşturma hatası: {str(e)}')
+            # Keep form data for re-rendering
+            form_data = request.POST
+            
+            # Get cities based on selected countries
+            baslangic_ulkesi_id = form_data.get('baslangic_ulkesi')
+            bitis_ulkesi_id = form_data.get('bitis_ulkesi')
+            
+            # Pass form data and context to template
+            context = {
+                'firmalar': firmalar,
+                'personeller': personeller,
+                'araclar': araclar,
+                'ulkeler': ulkeler,
+                'cargo_types': cargo_types,
+                'form_data': form_data,
+                'default_sefer_kodu': default_sefer_kodu,
+            }
+            return render(request, 'sefer_app/sefer_form.html', context)
+    
+    context = {
+        'firmalar': firmalar,
+        'personeller': personeller,
+        'araclar': araclar,
+        'ulkeler': ulkeler,
+        'cargo_types': cargo_types,
+        'default_sefer_kodu': default_sefer_kodu,
+    }
+    return render(request, 'sefer_app/sefer_form.html', context)
+
+def sefer_update(request, pk):
+    """Update an existing trip."""
+    sefer = get_object_or_404(Seferler, pk=pk)
+    firmalar = Firmalar.objects.filter(AktifMi=True).order_by('FirmaAdi')
+    personeller = Personeller.objects.all().order_by('PerAd')
+    araclar = AracBilgileri.objects.all().order_by('plaka')
+    ulkeler = Ulkeler.objects.all().order_by('ulke_adi')
+    
+    # Common cargo types for international transportation
+    cargo_types = [
+        "Genel Kargo (General Cargo)",
+        "Tekstil Ürünleri (Textiles)",
+        "Otomotiv Parçaları (Automotive Parts)",
+        "Elektronik Ürünler (Electronics)",
+        "Gıda Ürünleri (Food Products)", 
+        "Kimyasal Ürünler (Chemicals)",
+        "İnşaat Malzemeleri (Construction Materials)",
+        "Beyaz Eşya (Home Appliances)",
+        "Makineler (Machinery)",
+        "Mobilya (Furniture)",
+        "Plastik Ürünler (Plastic Products)",
+        "Metal Ürünler (Metal Products)",
+        "Soğuk Zincir (Cold Chain Cargo)",
+        "Tehlikeli Madde (Dangerous Goods)",
+        "Konteyner (Container)",
+        "Diğer (Other)"
+    ]
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            sefer.sefer_kodu = request.POST.get('sefer_kodu')
+            sefer.firma_id = request.POST.get('firma')
+            sefer.yuk_cinsi = request.POST.get('yuk_cinsi')
+            sefer.personel_id = request.POST.get('personel')
+            sefer.arac_id = request.POST.get('arac')
+            sefer.durum = request.POST.get('durum', 'Aktif')
+            
+            sefer.cikis_tarihi = request.POST.get('cikis_tarihi')
+            sefer.tahmini_varis_tarihi = request.POST.get('tahmini_varis_tarihi')
+            
+            sefer.baslangic_ulkesi_id = request.POST.get('baslangic_ulkesi')
+            sefer.baslangic_sehri_id = request.POST.get('baslangic_sehri')
+            sefer.bitis_ulkesi_id = request.POST.get('bitis_ulkesi')
+            sefer.bitis_sehri_id = request.POST.get('bitis_sehri')
+            
+            sefer.guzergah = request.POST.get('guzergah', '')
+            sefer.baslangic_km = request.POST.get('baslangic_km') or None
+            sefer.bitis_km = request.POST.get('bitis_km') or None
+            sefer.mesafe = safe_decimal(request.POST.get('mesafe', '0'))
+            sefer.ucret = safe_decimal(request.POST.get('ucret', '0'))
+            
+            # Save changes
+            sefer.save()
+            
+            messages.success(request, 'Sefer başarıyla güncellendi.')
+            return redirect('sefer_detail', pk=sefer.id)
+            
+        except Exception as e:
+            messages.error(request, f'Sefer güncelleme hatası: {str(e)}')
+            # Keep form data for re-rendering
+            form_data = request.POST
+            
+            context = {
+                'sefer': sefer,
+                'firmalar': firmalar,
+                'personeller': personeller,
+                'araclar': araclar,
+                'ulkeler': ulkeler,
+                'cargo_types': cargo_types,
+                'form_data': form_data,
+            }
+            return render(request, 'sefer_app/sefer_form.html', context)
+    
+    context = {
+        'sefer': sefer,
+        'firmalar': firmalar,
+        'personeller': personeller,
+        'araclar': araclar,
+        'ulkeler': ulkeler,
+        'cargo_types': cargo_types,
+    }
+    return render(request, 'sefer_app/sefer_form.html', context)
+
+def sefer_delete(request, pk):
+    """Delete a trip."""
+    sefer = get_object_or_404(Seferler, pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            # Check for related data that might prevent deletion
+            if sefer.faturalar.exists():
+                messages.error(request, "Bu sefere ait faturalar bulunduğu için silinemez. Önce ilgili faturaları silmelisiniz.")
+                return redirect('sefer_detail', pk=pk)
+            
+            sefer.delete()
+            messages.success(request, 'Sefer başarıyla silindi.')
+            return redirect('sefer_list')
+        except Exception as e:
+            messages.error(request, f'Sefer silinirken bir hata oluştu: {str(e)}')
+            return redirect('sefer_detail', pk=pk)
+    
+    context = {'sefer': sefer}
+    return render(request, 'sefer_app/sefer_delete.html', context)
+
+def sefer_update_status(request, pk):
+    """Update trip status, arrival date, and kilometers."""
+    sefer = get_object_or_404(Seferler, pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            durum = request.POST.get('durum')
+            notlar = request.POST.get('notlar', '')
+            varis_tarihi = request.POST.get('varis_tarihi')
+            bitis_km = request.POST.get('bitis_km')
+            
+            # Update sefer
+            sefer.durum = durum
+            
+            # Update arrival date if provided
+            if varis_tarihi:
+                sefer.varis_tarihi = varis_tarihi
+            
+            # Update ending kilometer if provided
+            if bitis_km:
+                sefer.bitis_km = bitis_km
+                
+                # Calculate total distance
+                if sefer.baslangic_km and bitis_km:
+                    sefer.toplam_kilometre = int(bitis_km) - int(sefer.baslangic_km)
+            
+            # Update notes
+            sefer.notlar = notlar
+            
+            # Save sefer with all updates
+            sefer.save()
+            
+            messages.success(request, 'Sefer durumu başarıyla güncellendi.')
+        except Exception as e:
+            messages.error(request, f'Sefer durumu güncellenirken bir hata oluştu: {str(e)}')
+        
+    return redirect('sefer_detail', pk=pk)
+
+def sefer_masraf_pdf(request, sefer_id):
+    """Generate PDF report of trip expenses."""
+    # Register fonts with Turkish character support
+    font_name = register_ttf_fonts()
+    font_bold = font_name + '-Bold' if font_name != 'Helvetica' else 'Helvetica-Bold'
+    
+    sefer = get_object_or_404(Seferler, pk=sefer_id)
+    masraflar = SeferMasraf.objects.filter(Sefer=sefer).order_by('Tarih')
+    
+    # Calculate total expenses
+    toplam_masraf = masraflar.aggregate(total=Coalesce(Sum('TutarEUR'), 0, output_field=DecimalField()))['total'] or 0
+    
+    # Create the HttpResponse object with PDF headers
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="sefer_{sefer_id}_masraflar.pdf"'
+    
+    # Create the PDF object
+    doc = SimpleDocTemplate(response, pagesize=A4)
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    
+    # Define styles with Turkish character support
+    title_style = ParagraphStyle(
+        name='TitleStyle', 
+        parent=styles['Heading1'], 
+        alignment=TA_CENTER,
+        fontName=font_bold
+    )
+    
+    normal_style = ParagraphStyle(
+        name='NormalStyle',
+        parent=styles['Normal'],
+        fontName=font_name
+    )
+    
+    # Create content elements
+    elements = []
+    
+    # Add title
+    elements.append(Paragraph(turkish_safe_text(f"Sefer #{sefer_id} - Masraf Raporu"), title_style))
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Add trip info
+    trip_info = []
+    trip_info.append(turkish_safe_text(f"Çıkış: {sefer.baslangic_sehri.sehir_adi if sefer.baslangic_sehri else '-'} ({sefer.cikis_tarihi.strftime('%d.%m.%Y') if sefer.cikis_tarihi else '-'})"))
+    trip_info.append(turkish_safe_text(f"Varış: {sefer.bitis_sehri.sehir_adi if sefer.bitis_sehri else '-'} ({sefer.varis_tarihi.strftime('%d.%m.%Y') if sefer.varis_tarihi else '-'})"))
+    
+    if sefer.arac:
+        trip_info.append(turkish_safe_text(f"Plaka: {sefer.arac.plaka}"))
+    
+    for info in trip_info:
+        elements.append(Paragraph(info, normal_style))
+    
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Create expense table
+    if masraflar:
+        # Table header
+        expense_data = [[
+            turkish_safe_text("Tarih"), 
+            turkish_safe_text("Masraf Tipi"), 
+            turkish_safe_text("Açıklama"), 
+            turkish_safe_text("Tutar (€)")
+        ]]
+        
+        # Add expense rows
+        for masraf in masraflar:
+            tarih = masraf.Tarih.strftime('%d.%m.%Y') if masraf.Tarih else '-'
+            masraf_tipi = masraf.MasrafTipi if masraf.MasrafTipi else '-'
+            aciklama = masraf.Aciklama or '-'
+            tutar = f"{format_currency(masraf.Tutar)} {masraf.ParaBirimi}"
+            
+            expense_data.append([
+                tarih,
+                turkish_safe_text(masraf_tipi),
+                turkish_safe_text(aciklama),
+                tutar
+            ])
+        
+        # Add total row
+        expense_data.append([
+            '',
+            '',
+            turkish_safe_text('TOPLAM'),
+            format_currency(toplam_masraf)
+        ])
+        
+        # Create table
+        expense_table = Table(expense_data, colWidths=[3*cm, 4*cm, 7*cm, 3*cm])
+        
+        # Apply style to table
+        expense_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), font_bold),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (3, 1), (3, -1), 'RIGHT'),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTNAME', (0, -1), (-1, -1), font_bold),
+        ]))
+        
+        elements.append(expense_table)
+    else:
+        elements.append(Paragraph(turkish_safe_text("Bu sefer için masraf kaydı bulunmamaktadır."), normal_style))
+    
+    # Add footer
+    elements.append(Spacer(1, 1*cm))
+    elements.append(Paragraph(turkish_safe_text(f"Oluşturulma Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), normal_style))
+    
+    # Build the PDF
+    doc.build(elements)
+    
+    return response
+
+def generate_masraf_belge_no():
+    """Generate a document number in the format MAS-MMYY-XXXX."""
+    today = datetime.now()
+    month_year = f"{today.month:02d}{str(today.year)[-2:]}"  # MMYY format
+    prefix = f"MAS-{month_year}-"
+    
+    # Check for existing document numbers with this prefix
+    latest_masraf = SeferMasraf.objects.filter(
+        BelgeNo__startswith=prefix
+    ).order_by('-BelgeNo').first()
+    
+    if latest_masraf and latest_masraf.BelgeNo and len(latest_masraf.BelgeNo) >= len(prefix) + 4:
+        try:
+            # Extract the numeric part and increment
+            number_part = latest_masraf.BelgeNo[len(prefix):]
+            number = int(number_part) + 1
+        except (ValueError, IndexError):
+            # If parsing fails, start from 1
+            number = 1
+    else:
+        # No existing document, start from 1
+        number = 1
+    
+    # Format with leading zeros to ensure 4 digits
+    return f"{prefix}{number:04d}"
+
+def sefer_masraf_create(request, sefer_id):
+    """Create a new expense for a trip."""
+    sefer = get_object_or_404(Seferler, pk=sefer_id)
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    para_birimleri = ParaBirimleri.objects.all().order_by('kod')
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            masraf_tipi = request.POST.get('MasrafTipi')
+            aciklama = request.POST.get('Aciklama', '')
+            tutar = safe_decimal(request.POST.get('Tutar', '0'))
+            para_birimi = request.POST.get('ParaBirimi', 'EUR')
+            kur = safe_decimal(request.POST.get('Kur', '1.0'))
+            tutar_eur = tutar / kur if kur > 0 else tutar  # Convert to EUR
+            tarih = request.POST.get('Tarih')
+            belge_no = request.POST.get('BelgeNo', '')
+            kasa_id = request.POST.get('Kasa')
+            odeme_yontemi = request.POST.get('OdemeYontemi', 'Nakit')
+            
+            # Generate document number if none provided
+            if not belge_no:
+                belge_no = generate_masraf_belge_no()
+                print(f"Generated expense document number: {belge_no}")
+            
+            # Create expense
+            masraf = SeferMasraf(
+                Sefer=sefer,
+                MasrafTipi=masraf_tipi,
+                Aciklama=aciklama,
+                Tutar=tutar,
+                ParaBirimi=para_birimi,
+                Kur=kur,
+                TutarEUR=tutar_eur,
+                Tarih=tarih,
+                BelgeNo=belge_no,
+                Kasa_id=kasa_id if kasa_id else None,
+                OdemeYontemi=odeme_yontemi
+            )
+            masraf.save()
+            
+            messages.success(request, 'Masraf kaydı başarıyla oluşturuldu.')
+            return redirect('sefer_detail', pk=sefer.id)
+            
+        except Exception as e:
+            messages.error(request, f'Masraf kaydı oluşturma hatası: {str(e)}')
+    
+    context = {
+        'sefer': sefer,
+        'kasalar': kasalar,
+        'para_birimleri': para_birimleri,
+        'today': timezone.now().date(),
+    }
+    return render(request, 'sefer_app/masraf_form.html', context)
+
+def sefer_masraf_analiz_pdf(request, pk):
+    """Generate PDF report with expense analysis pie chart."""
+    # Register fonts with Turkish character support
+    global font_name
+    font_name = register_ttf_fonts()
+    font_bold = font_name + '-Bold' if font_name != 'Helvetica' else 'Helvetica-Bold'
+    
+    sefer = get_object_or_404(Seferler, pk=pk)
+    
+    # Get related data
+    masraflar = SeferMasraf.objects.filter(Sefer=sefer).order_by('Tarih')
+    
+    # Group expenses by type for analysis
+    masraf_tipleri = masraflar.values('MasrafTipi').annotate(
+        toplam=Sum('TutarEUR')
+    ).order_by('-toplam')
+    
+    # Calculate total expense
+    toplam_masraf_eur = masraflar.aggregate(total=Coalesce(Sum('TutarEUR'), 0, output_field=DecimalField()))['total'] or 0
+    
+    # Create response
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="sefer_{pk}_masraf_analiz.pdf"'
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(
+        response,
+        pagesize=A4,
+        leftMargin=1.5*cm,
+        rightMargin=1.5*cm,
+        topMargin=1.5*cm,
+        bottomMargin=1.5*cm
+    )
+    
+    # Define styles
+    styles = getSampleStyleSheet()
+    
+    # Create custom styles with Turkish character support
+    title_style = ParagraphStyle(
+        name='TitleStyle', 
+        parent=styles['Heading1'], 
+        alignment=TA_CENTER,
+        fontName=font_bold,
+        fontSize=16
+    )
+    
+    subtitle_style = ParagraphStyle(
+        name='SubtitleStyle',
+        parent=styles['Heading2'],
+        fontName=font_bold,
+        fontSize=14
+    )
+    
+    normal_style = ParagraphStyle(
+        name='NormalStyle',
+        parent=styles['Normal'],
+        fontName=font_name,
+        fontSize=10
+    )
+    
+    # Create content elements
+    elements = []
+    
+    # Add title
+    elements.append(Paragraph("Next Global Logistic", title_style))
+    elements.append(Spacer(1, 0.3*cm))
+    elements.append(Paragraph(convert_turkish_chars(f"{sefer.sefer_kodu} MASRAF ANALIZ RAPORU"), title_style))
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Add trip basic info
+    elements.append(Paragraph(convert_turkish_chars("Sefer Bilgileri"), subtitle_style))
+    trip_data = [
+        [convert_turkish_chars("Rota:"), convert_turkish_chars(f"{sefer.baslangic_sehri.sehir_adi if sefer.baslangic_sehri else '-'} → {sefer.bitis_sehri.sehir_adi if sefer.bitis_sehri else '-'}")],
+        [convert_turkish_chars("Cikis Tarihi:"), sefer.cikis_tarihi.strftime('%d.%m.%Y') if sefer.cikis_tarihi else '-'],
+    ]
+    
+    if sefer.personel:
+        trip_data.append([convert_turkish_chars("Sofor:"), convert_turkish_chars(get_first_two_words(f"{sefer.personel.PerAd} {sefer.personel.PerSoyad}"))])
+    
+    if sefer.firma:
+        trip_data.append([convert_turkish_chars("Musteri:"), convert_turkish_chars(get_first_two_words(sefer.firma.FirmaAdi))])
+        
+    trip_table = Table(trip_data, colWidths=[4*cm, 12*cm])
+    trip_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTNAME', (0, 0), (0, -1), font_bold),
+        ('FONTNAME', (1, 0), (1, -1), font_name),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.3*cm),
+    ]))
+    elements.append(trip_table)
+    elements.append(Spacer(1, 0.8*cm))
+    
+    # Add Expense Analysis Title
+    elements.append(Paragraph(convert_turkish_chars("Masraf Analizi"), subtitle_style))
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Create pie chart if there are expenses
+    if masraf_tipleri.exists():
+        # Create drawing for pie chart
+        drawing = Drawing(400, 200)
+        
+        # Create pie chart with improved positioning
+        pie = Pie()
+        pie.x = 75
+        pie.y = 20
+        pie.width = 150
+        pie.height = 150
+        pie.sideLabels = 0  # Disable side labels that cause issues
+        
+        # Prepare data for pie chart
+        masraf_labels = [convert_turkish_chars(tip['MasrafTipi']) for tip in masraf_tipleri]
+        masraf_values = [float(tip['toplam']) for tip in masraf_tipleri]
+        
+        pie.data = masraf_values
+        
+        # Don't use labels directly on pie to avoid Turkish character issues
+        pie.labels = None  # Disable direct labels on pie
+        
+        # Set colors for pie slices with predefined colors for better visibility
+        # Choose colors with better contrast
+        pie_colors = [
+            colors.cornflowerblue, colors.crimson, colors.forestgreen, 
+            colors.purple, colors.darkorange, colors.darkturquoise,
+            colors.chocolate, colors.steelblue
+        ]
+        
+        # Assign colors to slices
+        for i in range(len(pie.data)):
+            pie.slices[i].fillColor = pie_colors[i % len(pie_colors)]
+            pie.slices[i].strokeWidth = 0.5
+            pie.slices[i].strokeColor = colors.white
+        
+        # Add legend with better positioning
+        legend = Legend()
+        legend.alignment = 'right'
+        legend.x = 240  # Move legend slightly to the right
+        legend.y = 65   # Adjust vertical position
+        legend.columnMaximum = 8
+        legend.dxTextSpace = 5
+        legend.fontSize = 9
+        legend.fontName = font_name
+        legend.deltay = 10  # Add more space between legend items
+        
+        # Use custom color pairs with Turkish-safe labels
+        colorNamePairs = []
+        for i in range(len(masraf_labels)):
+            color = pie_colors[i % len(pie_colors)]
+            colorNamePairs.append((color, masraf_labels[i]))
+        
+        legend.colorNamePairs = colorNamePairs
+
+        # Add chart and legend to the drawing
+        drawing.add(pie)
+        drawing.add(legend)
+        
+        # Add drawing to the PDF
+        elements.append(drawing)
+        elements.append(Spacer(1, 0.5*cm))
+        
+        # Add expense distribution table
+        elements.append(Paragraph(convert_turkish_chars("Masraf Dagilimi Tablosu"), subtitle_style))
+        
+        # Create expense data table with safer text handling
+        expense_data = [
+            [convert_turkish_chars("Masraf Tipi"), convert_turkish_chars("Tutar (EUR)"), "%"]
+        ]
+        
+        for tip in masraf_tipleri:
+            yuzde = (tip['toplam'] / toplam_masraf_eur) * 100 if toplam_masraf_eur else 0
+            expense_data.append([
+                convert_turkish_chars(tip['MasrafTipi']),
+                format_currency(tip['toplam']),
+                f"{yuzde:.1f}%"
+            ])
+        
+        # Add total row
+        expense_data.append([
+            convert_turkish_chars("Toplam"),
+            format_currency(toplam_masraf_eur),
+            "100%"
+        ])
+        
+        # Create the table
+        expense_table = Table(expense_data, colWidths=[8*cm, 5*cm, 3*cm])
+        expense_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), font_bold),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+            ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+            ('FONTNAME', (0, -1), (-1, -1), font_bold),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+        ]))
+        
+        elements.append(expense_table)
+    else:
+        elements.append(Paragraph(convert_turkish_chars("Bu sefere ait masraf kaydi bulunmamaktadir."), normal_style))
+    
+    # Add footer
+    elements.append(Spacer(1, 1*cm))
+    elements.append(Paragraph(convert_turkish_chars(f"Olusturulma Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), normal_style))
+    elements.append(Paragraph(convert_turkish_chars(f"© {datetime.now().year} NextSefer - Masraf Analiz Raporu"), normal_style))
+    
+    # Build the PDF
+    doc.build(elements)
+    
+    return response 

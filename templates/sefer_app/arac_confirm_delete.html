@@ -1,0 +1,62 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Araç Sil - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block page_title %}Araç Sil{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Araç Sil</h1>
+        <a href="{% url 'arac_list' %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Araç Listesine Dön
+        </a>
+    </div>
+
+    <!-- Silme Onay Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-danger">Silme Onayı</h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <h5>Dikkat!</h5>
+                <p>Aşağıdaki aracı silmek üzeresiniz. Bu işlem geri alınamaz. Bu araç ile ilgili tüm bakım kayıtları ve uyarılar da silinecektir.</p>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="font-weight-bold text-primary mb-0">Araç Bilgileri</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Plaka:</strong> {{ arac.plaka }}</p>
+                            <p><strong>Marka/Model:</strong> {{ arac.marka }} {{ arac.model }}</p>
+                            <p><strong>Model Yılı:</strong> {{ arac.model_yili }}</p>
+                            <p><strong>Araç Tipi:</strong> {{ arac.arac_tipi }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Kullanım Şekli:</strong> {{ arac.kullanim_sekli }}</p>
+                            <p><strong>Yakıt Tipi:</strong> {{ arac.yakit_tipi }}</p>
+                            <p><strong>Kilometre:</strong> {{ arac.kilometre }}</p>
+                            <p><strong>Araç Durumu:</strong> {{ arac.arac_durumu }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'arac_list' %}" class="btn btn-secondary">İptal</a>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash fa-sm text-white-50 me-1"></i> Aracı Sil
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

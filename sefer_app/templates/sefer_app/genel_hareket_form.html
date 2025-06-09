@@ -1,0 +1,239 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{% if hareket %}Kasa Hareketi Düzenle{% else %}Genel Kasa Hareketi Oluştur{% endif %}{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <h1 class="mt-4">{% if hareket %}Kasa Hareketi Düzenle{% else %}Genel Kasa Hareketi Oluştur{% endif %}</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="{% url 'index' %}">Ana Sayfa</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'kasa_list' %}">Kasalar</a></li>
+        <li class="breadcrumb-item active">{% if hareket %}Kasa Hareketi Düzenle{% else %}Genel Kasa Hareketi Oluştur{% endif %}</li>
+    </ol>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-money-bill-wave me-1"></i>
+            Genel Kasa Hareketi Bilgileri
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="kasa" class="form-label">Kasa *</label>
+                            <select class="form-select select2" id="kasa" name="kasa" required>
+                                <option value="">Kasa seçin</option>
+                                {% for kasa in kasalar %}
+                                <option value="{{ kasa.id }}" {% if hareket and hareket.kasa.id == kasa.id %}selected{% endif %}>{{ kasa }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="hareket_tipi" class="form-label">Hareket Tipi *</label>
+                            <select class="form-select select2" id="hareket_tipi" name="hareket_tipi" required>
+                                <option value="">Hareket tipi seçin</option>
+                                <option value="Gelir" {% if hareket and hareket.hareket_tipi == 'Gelir' %}selected{% endif %}>Gelir</option>
+                                <option value="Gider" {% if hareket and hareket.hareket_tipi == 'Gider' %}selected{% endif %}>Gider</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="kategori" class="form-label">Kategori *</label>
+                            <select class="form-select select2" id="kategori" name="kategori" required>
+                                <option value="">Kategori seçin</option>
+                                <option value="Ofis Giderleri" {% if hareket and hareket.kategori == 'Ofis Giderleri' %}selected{% endif %}>Ofis Giderleri</option>
+                                <option value="Kira" {% if hareket and hareket.kategori == 'Kira' %}selected{% endif %}>Kira</option>
+                                <option value="Elektrik" {% if hareket and hareket.kategori == 'Elektrik' %}selected{% endif %}>Elektrik</option>
+                                <option value="Su" {% if hareket and hareket.kategori == 'Su' %}selected{% endif %}>Su</option>
+                                <option value="İnternet" {% if hareket and hareket.kategori == 'İnternet' %}selected{% endif %}>İnternet</option>
+                                <option value="Telefon" {% if hareket and hareket.kategori == 'Telefon' %}selected{% endif %}>Telefon</option>
+                                <option value="Personel Maaşları" {% if hareket and hareket.kategori == 'Personel Maaşları' %}selected{% endif %}>Personel Maaşları</option>
+                                <option value="Vergi Ödemeleri" {% if hareket and hareket.kategori == 'Vergi Ödemeleri' %}selected{% endif %}>Vergi Ödemeleri</option>
+                                <option value="Sigorta" {% if hareket and hareket.kategori == 'Sigorta' %}selected{% endif %}>Sigorta</option>
+                                <option value="Yakıt" {% if hareket and hareket.kategori == 'Yakıt' %}selected{% endif %}>Yakıt</option>
+                                <option value="Bakım Onarım" {% if hareket and hareket.kategori == 'Bakım Onarım' %}selected{% endif %}>Bakım Onarım</option>
+                                <option value="Yemek" {% if hareket and hareket.kategori == 'Yemek' %}selected{% endif %}>Yemek</option>
+                                <option value="Banka Masrafları" {% if hareket and hareket.kategori == 'Banka Masrafları' %}selected{% endif %}>Banka Masrafları</option>
+                                <option value="Kredi Ödemeleri" {% if hareket and hareket.kategori == 'Kredi Ödemeleri' %}selected{% endif %}>Kredi Ödemeleri</option>
+                                <option value="Sermaye" {% if hareket and hareket.kategori == 'Sermaye' %}selected{% endif %}>Sermaye</option>
+                                <option value="Diğer Gelir" {% if hareket and hareket.kategori == 'Diğer Gelir' %}selected{% endif %}>Diğer Gelir</option>
+                                <option value="Diğer Gider" {% if hareket and hareket.kategori == 'Diğer Gider' %}selected{% endif %}>Diğer Gider</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="tarih" class="form-label">Tarih *</label>
+                            <input type="text" class="form-control datepicker" id="tarih" name="tarih" value="{% if hareket %}{{ hareket.tarih|date:'Y-m-d' }}{% else %}{{ today|date:'Y-m-d' }}{% endif %}" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3" id="gider_turu_group" style="display: {% if hareket and hareket.hareket_tipi == 'Gider' %}block{% else %}none{% endif %};">
+                            <label for="gider_turu" class="form-label">Gider Türü</label>
+                            <select class="form-select select2" id="gider_turu" name="gider_turu">
+                                <option value="">Seçin</option>
+                                <option value="Sabit" {% if hareket and hareket.gider_turu == 'Sabit' %}selected{% endif %}>Sabit Gider</option>
+                                <option value="Değişken" {% if hareket and hareket.gider_turu == 'Değişken' %}selected{% endif %}>Değişken Gider</option>
+                                <option value="Beklenmeyen" {% if hareket and hareket.gider_turu == 'Beklenmeyen' %}selected{% endif %}>Beklenmeyen Gider</option>
+                                <option value="Operasyonel" {% if hareket and hareket.gider_turu == 'Operasyonel' %}selected{% endif %}>Operasyonel Gider</option>
+                                <option value="Yatırım" {% if hareket and hareket.gider_turu == 'Yatırım' %}selected{% endif %}>Yatırım</option>
+                                <option value="Diğer" {% if hareket and hareket.gider_turu == 'Diğer' %}selected{% endif %}>Diğer</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="tutar" class="form-label">Tutar *</label>
+                            <input type="text" class="form-control" id="tutar" name="tutar" placeholder="0.00" value="{% if hareket %}{{ hareket.tutar }}{% endif %}" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="belge_no" class="form-label">Belge/Fiş No</label>
+                            <input type="text" class="form-control" id="belge_no" name="belge_no" value="{% if hareket %}{{ hareket.belge_no }}{% endif %}" placeholder="Boş bırakılırsa otomatik oluşturulur (KAS-AAYY-XXXX)">
+                            <small class="form-text text-muted">Belge numarası girilmezse KAS-AAYY-XXXX formatında otomatik oluşturulur.</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="aciklama" class="form-label">Açıklama</label>
+                            <textarea class="form-control" id="aciklama" name="aciklama" rows="3">{% if hareket %}{{ hareket.aciklama }}{% endif %}</textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">{% if hareket %}Hareketi Güncelle{% else %}Hareketi Kaydet{% endif %}</button>
+                    {% if hareket %}
+                    <a href="{% url 'kasa_detail' hareket.kasa.id %}" class="btn btn-secondary">İptal</a>
+                    {% else %}
+                    <a href="{% url 'kasa_list' %}" class="btn btn-secondary">İptal</a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    $(document).ready(function() {
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: {
+                    shorthand: ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct'],
+                    longhand: ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+                },
+                months: {
+                    shorthand: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+                    longhand: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+                }
+            }
+        });
+        
+        // Hareket tipine göre kategorileri ve gider türü alanını filtrele
+        const hareketTipi = document.getElementById('hareket_tipi');
+        const kategori = document.getElementById('kategori');
+        const giderTuruGroup = document.getElementById('gider_turu_group');
+        const gelirKategorileri = ['Sermaye', 'Diğer Gelir'];
+        
+        // Sayfa yüklendiğinde mevcut değere göre kategorileri filtrele
+        filterCategories();
+        
+        // Select2 ile çalışabilmesi için event listener'ı değiştirdik
+        $('#hareket_tipi').on('change', filterCategories);
+        
+        function filterCategories() {
+            const secilenTip = hareketTipi.value;
+            
+            // Kategori Select2'yi yeniden başlatmak için destroy ediyoruz
+            $(kategori).select2('destroy');
+            
+            // Önce tüm seçenekleri göster
+            Array.from(kategori.options).forEach(option => {
+                option.style.display = 'block';
+            });
+            
+            // Gider türü alanını göster/gizle
+            if (secilenTip === 'Gider') {
+                giderTuruGroup.style.display = 'block';
+            } else {
+                giderTuruGroup.style.display = 'none';
+                // Gider türü seçimini temizle
+                $('#gider_turu').val('').trigger('change');
+            }
+            
+            // Eğer Gelir seçildiyse, sadece gelir kategorilerini göster
+            if (secilenTip === 'Gelir') {
+                Array.from(kategori.options).forEach(option => {
+                    if (option.value && !gelirKategorileri.includes(option.value)) {
+                        option.style.display = 'none';
+                    }
+                });
+                
+                // Eğer görünmeyen bir kategori seçiliyse, seçimi kaldır
+                if (kategori.value && !gelirKategorileri.includes(kategori.value)) {
+                    kategori.value = '';
+                }
+            }
+            
+            // Kategori Select2'yi tekrar başlat
+            $(kategori).select2({
+                width: '100%',
+                placeholder: "Seçin..."
+            });
+        }
+    });
+</script>
+{% endblock %} 

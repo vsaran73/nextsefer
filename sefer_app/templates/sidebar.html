@@ -1,0 +1,119 @@
+<!-- Sidebar -->
+<ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
+
+    <!-- Sidebar - Brand -->
+    <a class="sidebar-brand d-flex align-items-center justify-content-center" href="{% url 'index' %}">
+        <div class="sidebar-brand-icon rotate-n-15">
+            <i class="fas fa-truck"></i>
+        </div>
+        <div class="sidebar-brand-text mx-3">NextSefer</div>
+    </a>
+
+    <!-- Divider -->
+    <hr class="sidebar-divider my-0">
+
+    <!-- Nav Item - Dashboard -->
+    <li class="nav-item {% if request.path == '/' %}active{% endif %}">
+        <a class="nav-link" href="{% url 'index' %}">
+            <i class="fas fa-fw fa-tachometer-alt"></i>
+            <span>Kontrol Paneli</span></a>
+    </li>
+
+    <!-- Divider -->
+    <hr class="sidebar-divider">
+
+    <!-- Heading -->
+    <div class="sidebar-heading">
+        Sefer Yönetimi
+    </div>
+
+    <!-- Nav Item - Seferler -->
+    <li class="nav-item {% if 'seferler' in request.path %}active{% endif %}">
+        <a class="nav-link" href="{% url 'sefer_list' %}">
+            <i class="fas fa-fw fa-route"></i>
+            <span>Seferler</span></a>
+    </li>
+
+    <!-- Nav Item - Araçlar -->
+    <li class="nav-item {% if 'araclar' in request.path %}active{% endif %}">
+        <a class="nav-link" href="{% url 'arac_list' %}">
+            <i class="fas fa-fw fa-truck"></i>
+            <span>Araçlar</span></a>
+    </li>
+
+    <!-- Divider -->
+    <hr class="sidebar-divider">
+
+    <!-- Heading -->
+    <div class="sidebar-heading">
+        Finans
+    </div>
+
+    <!-- Nav Item - Kasalar -->
+    <li class="nav-item {% if 'kasalar' in request.path %}active{% endif %}">
+        <a class="nav-link" href="{% url 'kasa_list' %}">
+            <i class="fas fa-fw fa-cash-register"></i>
+            <span>Kasalar</span></a>
+    </li>
+
+    <!-- Nav Item - Masraflar -->
+    <li class="nav-item {% if 'masraflar' in request.path %}active{% endif %}">
+        <a class="nav-link" href="{% url 'masraf_list' %}">
+            <i class="fas fa-fw fa-money-bill"></i>
+            <span>Masraflar</span></a>
+    </li>
+
+    <!-- Nav Item - Faturalar -->
+    <li class="nav-item {% if 'faturalar' in request.path %}active{% endif %}">
+        <a class="nav-link" href="{% url 'fatura_list' %}">
+            <i class="fas fa-fw fa-file-invoice"></i>
+            <span>Faturalar</span></a>
+    </li>
+
+    <!-- Divider -->
+    <hr class="sidebar-divider">
+
+    <!-- Heading -->
+    <div class="sidebar-heading">
+        Kayıtlar
+    </div>
+
+    <!-- Nav Item - Firmalar -->
+    <li class="nav-item {% if 'firmalar' in request.path %}active{% endif %}">
+        <a class="nav-link" href="{% url 'firma_list' %}">
+            <i class="fas fa-fw fa-building"></i>
+            <span>Firmalar</span></a>
+    </li>
+
+    <!-- Nav Item - Personeller -->
+    <li class="nav-item {% if 'personeller' in request.path %}active{% endif %}">
+        <a class="nav-link" href="{% url 'personel_list' %}">
+            <i class="fas fa-fw fa-users"></i>
+            <span>Personeller</span></a>
+    </li>
+
+    <!-- Divider -->
+    <hr class="sidebar-divider">
+
+    <!-- Heading -->
+    <div class="sidebar-heading">
+        Sistem
+    </div>
+
+    <!-- Nav Item - Yedekleme -->
+    <li class="nav-item {% if 'backup' in request.path %}active{% endif %}">
+        <a class="nav-link" href="{% url 'backup' %}">
+            <i class="fas fa-fw fa-database"></i>
+            <span>Yedekleme</span></a>
+    </li>
+
+    <!-- Divider -->
+    <hr class="sidebar-divider d-none d-md-block">
+
+    <!-- Sidebar Toggler (Sidebar) -->
+    <div class="text-center d-none d-md-inline">
+        <button class="rounded-circle border-0" id="sidebarToggle"></button>
+    </div>
+
+</ul>
+<!-- End of Sidebar --> 

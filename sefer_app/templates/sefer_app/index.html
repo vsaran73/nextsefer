@@ -1,0 +1,468 @@
+{% extends 'sefer_app/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Dashboard - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Dashboard</h1>
+        <div class="btn-group" role="group" aria-label="Dönem Filtresi">
+            <a href="?period=month" class="btn btn-sm {% if filter_period == 'month' %}btn-primary{% else %}btn-outline-primary{% endif %}">Bu Ay</a>
+            <a href="?period=30days" class="btn btn-sm {% if filter_period == '30days' %}btn-primary{% else %}btn-outline-primary{% endif %}">Son 30 Gün</a>
+            <a href="?period=year" class="btn btn-sm {% if filter_period == 'year' %}btn-primary{% else %}btn-outline-primary{% endif %}">Bu Yıl (2025)</a>
+            <a href="?period=all" class="btn btn-sm {% if filter_period == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">Tümü</a>
+        </div>
+    </div>
+    
+    <!-- İstatistik Kartları -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                {{ period_name }} Gelir</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ gelir|floatformat:"0" }} EUR</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                {{ period_name }} Gider</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ gider|floatformat:"0" }} EUR</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-lira-sign fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Toplam Sefer Sayısı
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ sefer_sayisi }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-truck fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-warning h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Bekleyen Uyarı</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ uyari_sayisi }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-exclamation-triangle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Grafikler -->
+    <div class="row">
+        <!-- Gelir Gider Grafiği -->
+        <div class="col-xl-8 col-lg-7">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">{{ period_name }} Gelir-Gider Grafiği</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-area">
+                        <canvas id="myAreaChart" style="width: 100%; height: 20rem;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pasta Grafiği -->
+        <div class="col-xl-4 col-lg-5">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">{{ period_name }} Gider Dağılımı</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-pie">
+                        <canvas id="myPieChart" style="width: 100%; height: 20rem;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Son Seferler Tablosu -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Son Seferler</h6>
+                    <a href="{% url 'sefer_list' %}" class="btn btn-sm btn-primary">Tümünü Gör</a>
+                </div>
+                <div class="card-body p-0">
+                    {% if aktif_seferler %}
+                        <div class="list-group list-group-flush">
+                                {% for sefer in aktif_seferler %}
+                                <a href="{% url 'sefer_detail' sefer.id %}" class="list-group-item list-group-item-action">
+                                    <div class="d-flex w-100 justify-content-between align-items-center">
+                                        <div>
+                                            <div class="mb-1">
+                                                <span class="badge {% if sefer.durum == 'Aktif' %}bg-warning{% elif sefer.durum == 'Tamamlandı' %}bg-success{% else %}bg-primary{% endif %} me-2">
+                                                    <i class="fas fa-truck"></i>
+                                                </span>
+                                                <span class="fw-bold">{{ sefer.sefer_kodu }}</span> - 
+                                                {{ sefer.arac.plaka }}
+                                            </div>
+                                            <small class="text-truncate d-inline-block" style="max-width: 500px;">
+                                                {{ sefer.yuk_cinsi }} - {{ sefer.baslangic_sehri }} → {{ sefer.bitis_sehri }}
+                                            </small>
+                                        </div>
+                                        <div class="text-end">
+                                            <small class="text-muted d-block">{{ sefer.cikis_tarihi|date:"d.m.Y" }}</small>
+                                            <small class="badge {% if sefer.durum == 'Aktif' %}bg-warning{% elif sefer.durum == 'Tamamlandı' %}bg-success{% else %}bg-primary{% endif %}">
+                                                {{ sefer.durum }}
+                                            </small>
+                                        </div>
+                                    </div>
+                                </a>
+                                {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-3">
+                            <p class="mb-0">Aktif sefer bulunmuyor.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Aktif Uyarılar Tablosu -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-warning">Aktif Uyarılar</h6>
+                    <a href="{% url 'uyari_list' %}" class="btn btn-sm btn-warning">Tümünü Gör</a>
+                </div>
+                <div class="card-body p-0">
+                    {% if aktif_uyarilar %}
+                        <div class="list-group list-group-flush">
+                            {% for uyari in aktif_uyarilar %}
+                                <a href="{% url 'uyari_detay' uyari.id %}" class="list-group-item list-group-item-action">
+                                    <div class="d-flex w-100 justify-content-between align-items-center">
+                                        <div>
+                                            <div class="mb-1">
+                                                <span class="badge bg-{{ uyari.durum_rengi }} me-2">
+                                                    {% if uyari.uyari_turu == 'muayene' %}
+                                                        <i class="fas fa-clipboard-check"></i>
+                                                    {% elif uyari.uyari_turu == 'sigorta' %}
+                                                        <i class="fas fa-shield-alt"></i>
+                                                    {% elif uyari.uyari_turu == 'bakim' %}
+                                                        <i class="fas fa-tools"></i>
+                                                    {% elif uyari.uyari_turu == 'vergi' %}
+                                                        <i class="fas fa-file-invoice-dollar"></i>
+                                                    {% elif uyari.uyari_turu == 'lastik' %}
+                                                        <i class="fas fa-tire"></i>
+                                                    {% elif uyari.uyari_turu == 'yag' %}
+                                                        <i class="fas fa-oil-can"></i>
+                                                    {% elif uyari.uyari_turu == 'belge' %}
+                                                        <i class="fas fa-file-alt"></i>
+                                                    {% else %}
+                                                        <i class="fas fa-bell"></i>
+                                                    {% endif %}
+                                                </span>
+                                                <span class="fw-bold">{{ uyari.arac.plaka }}</span> - 
+                                                {{ uyari.get_uyari_turu_display }}
+                                            </div>
+                                            <small class="text-truncate d-inline-block" style="max-width: 500px;">{{ uyari.uyari_mesaji }}</small>
+                                        </div>
+                                        <div class="text-end">
+                                            {% if uyari.son_tarih %}
+                                                <small class="text-muted d-block">{{ uyari.son_tarih|date:"d.m.Y" }}</small>
+                                                {% if uyari.kalan_gun is not None %}
+                                                    <small class="badge bg-{{ uyari.durum_rengi }}">
+                                                        {% if uyari.kalan_gun < 0 %}
+                                                            {{ uyari.kalan_gun|abs_value }} gün gecikme
+                                                        {% elif uyari.kalan_gun == 0 %}
+                                                            Bugün
+                                                        {% else %}
+                                                            {{ uyari.kalan_gun }} gün kaldı
+                                                        {% endif %}
+                                                    </small>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-3">
+                            <p class="mb-0">Aktif uyarı bulunmuyor.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Yakındaki Alacaklar ve Ödemeler Bölümü -->
+    <div class="row">
+        <!-- Yakındaki Alacaklar -->
+        <div class="col-md-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-success">Alacak Takibi</h6>
+                    <a href="{% url 'fatura_list' %}?durum=Ödenmedi&fatura_tipi=Satış" class="btn btn-sm btn-success">Tümünü Gör</a>
+                </div>
+                <div class="card-body p-0">
+                    {% if yakindaki_alacaklar %}
+                        <div class="list-group list-group-flush">
+                            {% for fatura in yakindaki_alacaklar %}
+                                <a href="{% url 'fatura_detail' fatura.id %}" class="list-group-item list-group-item-action">
+                                    <div class="d-flex w-100 justify-content-between align-items-center">
+                                        <div>
+                                            <div class="mb-1">
+                                                <span class="badge bg-success me-2">
+                                                    <i class="fas fa-money-bill-wave"></i>
+                                                </span>
+                                                <span class="fw-bold">{{ fatura.FaturaNo }}</span> - 
+                                                {{ fatura.Firma.FirmaAdi }}
+                                            </div>
+                                            <small class="text-truncate d-inline-block" style="max-width: 500px;">
+                                                {{ fatura.kalan_tutar|floatformat:2 }} EUR - {{ fatura.FaturaTipi }}
+                                            </small>
+                                        </div>
+                                        <div class="text-end">
+                                            <small class="text-muted d-block">{{ fatura.VadeTarihi|date:"d.m.Y" }}</small>
+                                            <small class="badge {% if fatura.VadeTarihi < today %}bg-danger{% else %}bg-success{% endif %}">
+                                                {% if fatura.VadeTarihi < today %}
+                                                    {% with gunfark=today|timeuntil:fatura.VadeTarihi %}
+                                                        {{ gunfark }} gecikme
+                                                    {% endwith %}
+                                                {% else %}
+                                                    {% with gunfark=fatura.VadeTarihi|timeuntil %}
+                                                        {{ gunfark }} kaldı
+                                                    {% endwith %}
+                                                {% endif %}
+                                            </small>
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-3">
+                            <p class="mb-0">Bekleyen alacak bulunmuyor.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Yakındaki Ödemeler -->
+        <div class="col-md-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-danger">Ödeme Takibi</h6>
+                    <a href="{% url 'fatura_list' %}?durum=Ödenmedi&fatura_tipi=Alış" class="btn btn-sm btn-danger">Tümünü Gör</a>
+                </div>
+                <div class="card-body p-0">
+                    {% if yakindaki_odemeler %}
+                        <div class="list-group list-group-flush">
+                            {% for fatura in yakindaki_odemeler %}
+                                <a href="{% url 'fatura_detail' fatura.id %}" class="list-group-item list-group-item-action">
+                                    <div class="d-flex w-100 justify-content-between align-items-center">
+                                        <div>
+                                            <div class="mb-1">
+                                                <span class="badge bg-danger me-2">
+                                                    <i class="fas fa-file-invoice-dollar"></i>
+                                                </span>
+                                                <span class="fw-bold">{{ fatura.FaturaNo }}</span> - 
+                                                {{ fatura.Firma.FirmaAdi }}
+                                            </div>
+                                            <small class="text-truncate d-inline-block" style="max-width: 500px;">
+                                                {{ fatura.kalan_tutar|floatformat:2 }} EUR - {{ fatura.FaturaTipi }}
+                                            </small>
+                                        </div>
+                                        <div class="text-end">
+                                            <small class="text-muted d-block">{{ fatura.VadeTarihi|date:"d.m.Y" }}</small>
+                                            <small class="badge {% if fatura.VadeTarihi < today %}bg-danger{% else %}bg-success{% endif %}">
+                                                {% if fatura.VadeTarihi < today %}
+                                                    {% with gunfark=today|timeuntil:fatura.VadeTarihi %}
+                                                        {{ gunfark }} gecikme
+                                                    {% endwith %}
+                                                {% else %}
+                                                    {% with gunfark=fatura.VadeTarihi|timeuntil %}
+                                                        {{ gunfark }} kaldı
+                                                    {% endwith %}
+                                                {% endif %}
+                                            </small>
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-3">
+                            <p class="mb-0">Bekleyen ödeme bulunmuyor.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    // Veri değişkenleri
+    var months = {{ months|safe }};
+    var incomeData = {{ income_data|safe }};
+    var expenseData = {{ expense_data|safe }};
+    var expenseCategories = {{ expense_categories|safe }};
+    var expenseValues = {{ expense_values|safe }};
+    var expenseColors = {{ expense_colors|safe }};
+
+    // Alan Grafiği
+    var ctx = document.getElementById("myAreaChart");
+    var myLineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: "Gelir",
+                lineTension: 0.3,
+                backgroundColor: "rgba(78, 115, 223, 0.05)",
+                borderColor: "rgba(78, 115, 223, 1)",
+                pointRadius: 3,
+                pointBackgroundColor: "rgba(78, 115, 223, 1)",
+                pointBorderColor: "rgba(78, 115, 223, 1)",
+                pointHoverRadius: 3,
+                pointHoverBackgroundColor: "rgba(78, 115, 223, 1)",
+                pointHoverBorderColor: "rgba(78, 115, 223, 1)",
+                pointHitRadius: 10,
+                pointBorderWidth: 2,
+                data: incomeData,
+            },
+            {
+                label: "Gider",
+                lineTension: 0.3,
+                backgroundColor: "rgba(231, 74, 59, 0.05)",
+                borderColor: "rgba(231, 74, 59, 1)",
+                pointRadius: 3,
+                pointBackgroundColor: "rgba(231, 74, 59, 1)",
+                pointBorderColor: "rgba(231, 74, 59, 1)",
+                pointHoverRadius: 3,
+                pointHoverBackgroundColor: "rgba(231, 74, 59, 1)",
+                pointHoverBorderColor: "rgba(231, 74, 59, 1)",
+                pointHitRadius: 10,
+                pointBorderWidth: 2,
+                data: expenseData,
+            }],
+        },
+        options: {
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return Math.round(value).toLocaleString() + ' €';
+                        }
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            var label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += Math.round(context.parsed.y).toLocaleString() + ' €';
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Pasta Grafiği
+    var ctx2 = document.getElementById("myPieChart");
+    var myPieChart = new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+            labels: expenseCategories,
+            datasets: [{
+                data: expenseValues,
+                backgroundColor: expenseColors,
+                hoverBackgroundColor: expenseColors,
+                hoverBorderColor: "rgba(234, 236, 244, 1)",
+            }],
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            var label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.raw) {
+                                label += Math.round(context.raw).toLocaleString() + ' €';
+                            }
+                            return label;
+                        }
+                    }
+                },
+                legend: {
+                    display: true,
+                    position: 'bottom'
+                }
+            },
+            cutout: '50%'
+        },
+    });
+</script>
+{% endblock %} 

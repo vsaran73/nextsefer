@@ -1,0 +1,56 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Fatura Sil - {{ fatura.FaturaNo }}{% endblock %}
+
+{% block page_title %}Fatura Silme Onayı{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-6 mx-auto">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Fatura Silme Onayı</h6>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger">
+                        <h5 class="alert-heading">Dikkat!</h5>
+                        <p>
+                            "<strong>{{ fatura.FaturaNo }}</strong>" numaralı faturayı silmek üzeresiniz. 
+                            Bu işlem geri alınamaz ve tüm fatura verileri silinecektir.
+                        </p>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <p><strong>Fatura No:</strong> {{ fatura.FaturaNo }}</p>
+                            <p><strong>Fatura Tipi:</strong> {{ fatura.FaturaTipi }}</p>
+                            <p><strong>Firma:</strong> {{ fatura.Firma.FirmaAdi }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Fatura Tarihi:</strong> {{ fatura.FaturaTarihi|date:"d.m.Y" }}</p>
+                            <p><strong>Toplam Tutar:</strong> {{ fatura.ToplamTutar }} EUR</p>
+                            <p><strong>Ödeme Durumu:</strong> {{ fatura.OdemeDurumu }}</p>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'fatura_detail' fatura.id %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left fa-sm"></i> İptal
+                        </a>
+                        
+                        <form method="post">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash fa-sm"></i> Faturayı Sil
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

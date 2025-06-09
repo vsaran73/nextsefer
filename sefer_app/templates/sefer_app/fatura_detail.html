@@ -1,0 +1,265 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{{ fatura.FaturaNo }} - Fatura Detayı{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Yazdırma stillerini ayarla */
+    @media print {
+        /* Sayfa boşluklarını azalt */
+        @page {
+            margin: 1cm;
+        }
+        
+        /* Yazdırmada gizlenecek elementler */
+        .no-print, .no-print * {
+            display: none !important;
+        }
+        
+        /* Ödeme bilgileri bölümünü yazdırmada gizle */
+        .payment-details {
+            display: none !important;
+        }
+        
+        /* Diğer faturalar bölümünü yazdırmada gizle */
+        .other-invoices {
+            display: none !important;
+        }
+        
+        /* Yazdırmada gözükecek elementler için düzenlemeler */
+        .print-only {
+            display: block !important;
+        }
+        
+        /* PDF görünümü için geniş alan */
+        .invoice-main {
+            width: 100% !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}Fatura Detayı{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Fatura Detayı</h1>
+        <div>
+            <a href="{% url 'fatura_list' %}" class="btn btn-sm btn-secondary shadow-sm me-2">
+                <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Geri
+            </a>
+            <a href="{% url 'fatura_update' fatura.id %}" class="btn btn-sm btn-warning shadow-sm me-2">
+                <i class="fas fa-edit fa-sm text-white-50 me-1"></i> Düzenle
+            </a>
+            <a href="{% url 'fatura_delete' fatura.id %}" class="btn btn-sm btn-danger shadow-sm me-2">
+                <i class="fas fa-trash fa-sm text-white-50 me-1"></i> Sil
+            </a>
+            <a href="{% url 'fatura_pdf' fatura.id %}" class="btn btn-sm btn-info shadow-sm me-2">
+                <i class="fas fa-file-pdf fa-sm text-white-50 me-1"></i> PDF
+            </a>
+            <button type="button" class="btn btn-sm btn-primary shadow-sm" onclick="window.print();">
+                <i class="fas fa-print fa-sm text-white-50 me-1"></i> Yazdır
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Fatura Bilgileri -->
+        <div class="col-xl-8 col-lg-7 invoice-main">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Fatura Bilgileri</h6>
+                    <span class="badge {% if fatura.FaturaTipi == 'Alış' %}bg-info{% elif fatura.FaturaTipi == 'Satış' %}bg-success{% else %}bg-primary{% endif %} text-white px-3 py-2">
+                        {{ fatura.FaturaTipi }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h2 class="h4 mb-3">Fatura No: {{ fatura.FaturaNo }}</h2>
+                            <p class="mb-1"><strong>Cari:</strong> {{ fatura.Firma.FirmaAdi }}</p>
+                            <p class="mb-1"><strong>Vergi No:</strong> {{ fatura.Firma.VergiNumarasi }}</p>
+                            <p class="mb-1"><strong>Adres:</strong> {{ fatura.Firma.Adres }}</p>
+                            {% if fatura.ilgili_sefer %}
+                            <p class="mb-1"><strong>İlgili Sefer:</strong> <a href="{% url 'sefer_detail' fatura.ilgili_sefer.id %}">{{ fatura.ilgili_sefer.sefer_kodu }}</a></p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            <p class="mb-1"><strong>Fatura Tarihi:</strong> {{ fatura.FaturaTarihi|date:"d.m.Y" }}</p>
+                            <p class="mb-1"><strong>Vade Tarihi:</strong> {{ fatura.VadeTarihi|date:"d.m.Y" }}</p>
+                            <p class="mb-1"><strong>Para Birimi:</strong> EUR</p>
+                            <p class="mb-1"><strong>Açıklama:</strong> {{ fatura.Aciklama }}</p>
+                            <p class="mb-1">
+                                <strong>Ödeme Durumu:</strong> 
+                                <span class="badge {% if fatura.OdemeDurumu == 'Ödendi' %}bg-success{% elif fatura.OdemeDurumu == 'Kısmi Ödeme' %}bg-warning{% else %}bg-danger{% endif %}">
+                                    {{ fatura.OdemeDurumu }}
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Fatura Kalemleri Tablosu -->
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Ürün/Hizmet</th>
+                                    <th>Açıklama</th>
+                                    <th class="text-end">Miktar</th>
+                                    <th>Birim</th>
+                                    <th class="text-end">Birim Fiyat</th>
+                                    <th class="text-end">KDV %</th>
+                                    <th class="text-end">Toplam</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for urun in urunler %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ urun.UrunHizmetAdi }}</td>
+                                    <td>{{ urun.Aciklama|default:'' }}</td>
+                                    <td class="text-end">{{ urun.Miktar }}</td>
+                                    <td>{{ urun.Birim }}</td>
+                                    <td class="text-end">{{ urun.BirimFiyat }} EUR</td>
+                                    <td class="text-end">{{ urun.KDVOrani }}</td>
+                                    <td class="text-end">{{ urun.Toplam }} EUR</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="8" class="text-center">Fatura kalemi bulunamadı.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-light">
+                                    <th colspan="6" class="text-end">Ara Toplam:</th>
+                                    <td colspan="2" class="text-end">{{ fatura.AraToplam }} EUR</td>
+                                </tr>
+                                <tr class="table-light">
+                                    <th colspan="6" class="text-end">KDV Tutarı:</th>
+                                    <td colspan="2" class="text-end">{{ fatura.KDVOrani }} %</td>
+                                </tr>
+                                <tr class="table-primary">
+                                    <th colspan="6" class="text-end">Genel Toplam:</th>
+                                    <td colspan="2" class="text-end fw-bold">{{ fatura.ToplamTutar }} EUR</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    
+                    <!-- Fatura Notları -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="border p-3 bg-light">
+                                <h6 class="fw-bold">Fatura Notları:</h6>
+                                <p class="mb-0">{{ fatura.Notlar }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ödeme Bilgileri -->
+        <div class="col-xl-4 col-lg-5">
+            <div class="card shadow mb-4 payment-details">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Ödeme Bilgileri</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-4">
+                        <div class="progress mb-2">
+                            <div class="progress-bar bg-success" role="progressbar" 
+                                 data-width="{{ odeme_yuzdesi }}"
+                                 aria-valuenow="{{ odeme_yuzdesi }}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100"></div>
+                        </div>
+                        <small class="text-muted">Toplam ödeme durumu: {{ odeme_yuzdesi }}%</small>
+                    </div>
+                    
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var progressBar = document.querySelector('.progress-bar');
+                            var width = progressBar.getAttribute('data-width') + '%';
+                            progressBar.style.width = width;
+                        });
+                    </script>
+                    
+                    <div class="row mb-3">
+                        <div class="col-7 text-muted">Toplam Tutar:</div>
+                        <div class="col-5 text-end fw-bold">{{ fatura.ToplamTutar }} EUR</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-7 text-muted">Ödenen Tutar:</div>
+                        <div class="col-5 text-end fw-bold text-success">{{ fatura.OdenenTutar }} EUR</div>
+                    </div>
+                    <div class="row mb-4">
+                        <div class="col-7 text-muted">Kalan Tutar:</div>
+                        <div class="col-5 text-end fw-bold text-danger">{{ kalan_tutar }} EUR</div>
+                    </div>
+                    
+                    <div class="border-top pt-3">
+                        <h6 class="fw-bold mb-3">Ödemeler</h6>
+                        
+                        {% if odemeler %}
+                            {% for odeme in odemeler %}
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <span class="d-block">{{ odeme.OdemeTarihi|date:"d.m.Y" }}</span>
+                                    <small class="text-muted">{{ odeme.OdemeTipi }}</small>
+                                </div>
+                                <div class="text-end">
+                                    <span class="fw-bold">{{ odeme.Tutar }} EUR</span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-center text-muted">Henüz ödeme kaydı bulunmuyor.</p>
+                        {% endif %}
+                        
+                        <!-- Yeni Ödeme Ekle Butonu -->
+                        <div class="mt-3">
+                            <a href="{% url 'fatura_odeme_create' fatura.id %}" class="btn btn-primary btn-sm w-100">
+                                <i class="fas fa-plus fa-sm me-1"></i> Yeni Ödeme Ekle
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Cari Firma Diğer Faturaları -->
+            <div class="card shadow mb-4 other-invoices">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">{{ fatura.Firma.FirmaAdi }} - Diğer Faturalar</h6>
+                </div>
+                <div class="card-body">
+                    {% if diger_faturalar %}
+                        <div class="list-group">
+                            {% for diger_fatura in diger_faturalar %}
+                                <a href="{% url 'fatura_detail' diger_fatura.id %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-bold">{{ diger_fatura.FaturaNo }}</div>
+                                        <small class="text-muted">{{ diger_fatura.FaturaTarihi|date:"d.m.Y" }}</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge {% if diger_fatura.FaturaTipi == 'Alış' %}bg-info{% elif diger_fatura.FaturaTipi == 'Satış' %}bg-success{% else %}bg-primary{% endif %}">
+                                            {{ diger_fatura.FaturaTipi }}
+                                        </span>
+                                        <div class="fw-bold mt-1">{{ diger_fatura.ToplamTutar }} EUR</div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-center text-muted">Bu firmaya ait başka fatura bulunmuyor.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,230 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{% if arac %}Araç Düzenle{% else %}Yeni Araç Ekle{% endif %} - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}{% if arac %}Araç Düzenle{% else %}Yeni Araç Ekle{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">
+            {% if arac %}{{ arac.plaka }} - Araç Düzenle{% else %}Yeni Araç Ekle{% endif %}
+        </h1>
+        <a href="{% url 'arac_list' %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Araçlar Listesine Dön
+        </a>
+    </div>
+
+    <!-- Form Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Araç Bilgileri</h6>
+        </div>
+        <div class="card-body">
+            <form method="post" class="user">
+                {% csrf_token %}
+                
+                <div class="row">
+                    <!-- Temel Bilgiler -->
+                    <div class="col-lg-6">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="font-weight-bold text-primary mb-0">Temel Bilgiler</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="plaka" class="form-label">Plaka *</label>
+                                        <input type="text" class="form-control" id="plaka" name="plaka" 
+                                            value="{{ arac.plaka|default:'' }}" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="arac_durumu" class="form-label">Durum</label>
+                                        <select class="form-select form-control select2" id="arac_durumu" name="arac_durumu">
+                                            <option value="Aktif" {% if arac.arac_durumu == 'Aktif' %}selected{% endif %}>Aktif</option>
+                                            <option value="Bakımda" {% if arac.arac_durumu == 'Bakımda' %}selected{% endif %}>Bakımda</option>
+                                            <option value="Arızalı" {% if arac.arac_durumu == 'Arızalı' %}selected{% endif %}>Arızalı</option>
+                                            <option value="Pasif" {% if arac.arac_durumu == 'Pasif' %}selected{% endif %}>Pasif</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="arac_tipi" class="form-label">Araç Tipi</label>
+                                        <select class="form-select form-control select2" id="arac_tipi" name="arac_tipi">
+                                            <option value="Tır" {% if arac.arac_tipi == 'Tır' %}selected{% endif %}>Tır</option>
+                                            <option value="Kamyon" {% if arac.arac_tipi == 'Kamyon' %}selected{% endif %}>Kamyon</option>
+                                            <option value="Kamyonet" {% if arac.arac_tipi == 'Kamyonet' %}selected{% endif %}>Kamyonet</option>
+                                            <option value="Minibüs" {% if arac.arac_tipi == 'Minibüs' %}selected{% endif %}>Minibüs</option>
+                                            <option value="Otomobil" {% if arac.arac_tipi == 'Otomobil' %}selected{% endif %}>Otomobil</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="kullanim_sekli" class="form-label">Kullanım Şekli</label>
+                                        <select class="form-select form-control select2" id="kullanim_sekli" name="kullanim_sekli">
+                                            <option value="Nakliye" {% if arac.kullanim_sekli == 'Nakliye' %}selected{% endif %}>Nakliye</option>
+                                            <option value="Servis" {% if arac.kullanim_sekli == 'Servis' %}selected{% endif %}>Servis</option>
+                                            <option value="Şirket Aracı" {% if arac.kullanim_sekli == 'Şirket Aracı' %}selected{% endif %}>Şirket Aracı</option>
+                                            <option value="Diğer" {% if arac.kullanim_sekli == 'Diğer' %}selected{% endif %}>Diğer</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <label for="atanmis_sofor" class="form-label">Atanmış Şoför</label>
+                                        <select class="form-select form-control select2" id="atanmis_sofor" name="atanmis_sofor">
+                                            <option value="">Şoför Seçiniz</option>
+                                            {% for personel in personeller %}
+                                                <option value="{{ personel.id }}" {% if arac.atanmis_sofor.id == personel.id %}selected{% endif %}>
+                                                    {{ personel.PerAd }} {{ personel.PerSoyad }}
+                                                </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Araç Özellikleri -->
+                    <div class="col-lg-6">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h6 class="font-weight-bold text-primary mb-0">Araç Özellikleri</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="marka" class="form-label">Marka</label>
+                                        <input type="text" class="form-control" id="marka" name="marka" 
+                                            value="{{ arac.marka|default:'' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="model" class="form-label">Model</label>
+                                        <input type="text" class="form-control" id="model" name="model" 
+                                            value="{{ arac.model|default:'' }}">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="model_yili" class="form-label">Model Yılı</label>
+                                        <input type="number" class="form-control" id="model_yili" name="model_yili" 
+                                            value="{{ arac.model_yili|default:'' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="yakit_tipi" class="form-label">Yakıt Tipi</label>
+                                        <select class="form-select form-control select2" id="yakit_tipi" name="yakit_tipi">
+                                            <option value="Dizel" {% if arac.yakit_tipi == 'Dizel' %}selected{% endif %}>Dizel</option>
+                                            <option value="Benzin" {% if arac.yakit_tipi == 'Benzin' %}selected{% endif %}>Benzin</option>
+                                            <option value="LPG" {% if arac.yakit_tipi == 'LPG' %}selected{% endif %}>LPG</option>
+                                            <option value="Elektrik" {% if arac.yakit_tipi == 'Elektrik' %}selected{% endif %}>Elektrik</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="motor_no" class="form-label">Motor No</label>
+                                        <input type="text" class="form-control" id="motor_no" name="motor_no" 
+                                            value="{{ arac.motor_no|default:'' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="sasi_no" class="form-label">Şasi No</label>
+                                        <input type="text" class="form-control" id="sasi_no" name="sasi_no" 
+                                            value="{{ arac.sasi_no|default:'' }}">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="ilk_kilometre" class="form-label">İlk Kilometre</label>
+                                        <input type="number" class="form-control" id="ilk_kilometre" name="ilk_kilometre" 
+                                            value="{{ arac.ilk_kilometre|default:0 }}">
+                                        <small class="form-text text-muted">Araç satın alındığındaki kilometre değeri</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="lastik_olculeri" class="form-label">Lastik Ölçüleri</label>
+                                        <input type="text" class="form-control" id="lastik_olculeri" name="lastik_olculeri" 
+                                            value="{{ arac.lastik_olculeri|default:'' }}">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Buttons -->
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'arac_list' %}" class="btn btn-secondary">İptal</a>
+                    <button type="submit" class="btn btn-primary">
+                        {% if arac %}Güncelle{% else %}Kaydet{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    $(document).ready(function() {
+        // Form validation
+        $('form').on('submit', function(e) {
+            var plaka = $('#plaka').val();
+            if (!plaka) {
+                e.preventDefault();
+                alert('Plaka alanı zorunludur!');
+                $('#plaka').focus();
+            }
+        });
+        
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: {
+                    shorthand: ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct'],
+                    longhand: ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+                },
+                months: {
+                    shorthand: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+                    longhand: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+                }
+            }
+        });
+    });
+</script>
+{% endblock %} 

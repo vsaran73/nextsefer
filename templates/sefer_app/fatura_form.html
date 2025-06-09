@@ -1,0 +1,621 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{% if fatura %}Fatura Düzenle{% else %}Yeni Fatura{% endif %} - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .kalem-satir {
+        position: relative;
+        background-color: #f8f9fc;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-left: 4px solid #4e73df;
+    }
+    .kalem-sil-btn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+    }
+    .fatura-tipi-btn {
+        display: block;
+        width: 100%;
+        text-align: center;
+        padding: 20px;
+        margin-bottom: 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        border: 1px solid #e3e6f0;
+        background-color: white;
+    }
+    .fatura-tipi-btn i {
+        font-size: 3rem;
+        margin-bottom: 15px;
+        display: block;
+    }
+    .fatura-tipi-btn h5 {
+        margin-bottom: 10px;
+        font-weight: 600;
+    }
+    .alis-btn {
+        color: #36b9cc;
+    }
+    .satis-btn {
+        color: #1cc88a;
+    }
+    .nakliye-btn {
+        color: #4e73df;
+    }
+    #seferSecimAlani.hidden {
+        display: none;
+    }
+    #seferSecimAlani.visible {
+        display: block;
+    }
+    #odemeAlani.hidden {
+        display: none;
+    }
+    #odemeAlani.visible {
+        display: block;
+    }
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+    
+    /* Ürünler tablosu için stil */
+    .urun-tablosu {
+        margin-top: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .urun-row {
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .urun-row:last-child {
+        border-bottom: none;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}{% if fatura %}Fatura Düzenle{% else %}Yeni Fatura{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">{% if fatura %}Fatura Düzenle{% else %}Yeni Fatura{% endif %}</h1>
+        <a href="{% url 'fatura_list' %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Faturalar Listesine Dön
+        </a>
+    </div>
+
+    <form method="post" id="faturaForm">
+        {% csrf_token %}
+        
+        {% if messages %}
+        <div class="alert alert-danger">
+            {% for message in messages %}
+            <p>{{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if not fatura %}
+        <!-- Fatura Tipi Seçimi (sadece yeni fatura oluşturmada gösterilir) -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">Fatura Tipi Seçin</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 text-center">
+                                <div class="fatura-tipi-btn alis-btn" data-tip="Alış">
+                                    <i class="fas fa-shopping-cart"></i>
+                                    <h5>Alış Faturası</h5>
+                                    <p>Satın alınan ürün ve hizmetler için</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4 text-center">
+                                <div class="fatura-tipi-btn satis-btn" data-tip="Satış">
+                                    <i class="fas fa-store"></i>
+                                    <h5>Satış Faturası</h5>
+                                    <p>Satılan ürün ve hizmetler için</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4 text-center">
+                                <div class="fatura-tipi-btn nakliye-btn" data-tip="Nakliye">
+                                    <i class="fas fa-truck"></i>
+                                    <h5>Nakliye Faturası</h5>
+                                    <p>Nakliye hizmetleri için</p>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" name="fatura_tipi" id="faturaTipiInput" value="{{ fatura.FaturaTipi|default:'' }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="row">
+            <!-- Fatura Bilgileri -->
+            <div class="col-lg-8">
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                        <h6 class="m-0 font-weight-bold text-primary">Fatura Bilgileri</h6>
+                        {% if fatura %}
+                        <span class="badge {% if fatura.FaturaTipi == 'Alış' %}bg-info{% elif fatura.FaturaTipi == 'Satış' %}bg-success{% else %}bg-primary{% endif %} text-white px-3 py-2">
+                            {{ fatura.FaturaTipi }}
+                        </span>
+                        <input type="hidden" name="fatura_tipi" value="{{ fatura.FaturaTipi }}">
+                        {% endif %}
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="faturaNo" class="form-label">Fatura No</label>
+                                {% if fatura %}
+                                <input type="text" class="form-control" id="faturaNo" name="fatura_no" value="{{ fatura.FaturaNo }}" required>
+                                {% else %}
+                                <input type="text" class="form-control" id="faturaNo" name="fatura_no" value="{{ default_fatura_no }}" readonly required>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="firma" class="form-label">Cari</label>
+                                <select class="form-select select2" id="firma" name="firma" required>
+                                    <option value="">Cari Seçin</option>
+                                    {% for firma in firmalar %}
+                                    <option value="{{ firma.id }}" {% if fatura and fatura.Firma.id == firma.id %}selected{% endif %}>{{ firma.FirmaAdi }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="faturaTarihi" class="form-label">Fatura Tarihi</label>
+                                <input type="text" class="form-control datepicker" id="faturaTarihi" name="fatura_tarihi" value="{{ fatura.FaturaTarihi|date:'Y-m-d'|default:'' }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="vadeTarihi" class="form-label">Vade Tarihi</label>
+                                <input type="text" class="form-control datepicker" id="vadeTarihi" name="vade_tarihi" value="{{ fatura.VadeTarihi|date:'Y-m-d'|default:'' }}">
+                            </div>
+                            <!-- Para birimi artık sabit EUR -->
+                            <input type="hidden" name="para_birimi" value="EUR">
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label for="aciklama" class="form-label">Açıklama</label>
+                                <textarea class="form-control" id="aciklama" name="aciklama" rows="2">{{ fatura.Aciklama|default:'' }}</textarea>
+                            </div>
+                        </div>
+
+                        <!-- Nakliye faturası seçildiğinde gösterilecek sefer seçimi -->
+                        <div class="row mb-3">
+                            <div id="seferSecimAlani" class="col-md-12 {% if fatura and fatura.FaturaTipi == 'Nakliye' %}visible{% else %}hidden{% endif %}">
+                                <label for="ilgiliSefer" class="form-label">İlgili Sefer</label>
+                                <select class="form-select select2" id="ilgiliSefer" name="ilgili_sefer">
+                                    <option value="">Sefer Seçin</option>
+                                    {% for sefer in seferler %}
+                                    <option value="{{ sefer.id }}" {% if fatura and fatura.Sefer and fatura.Sefer.id == sefer.id %}selected{% endif %}>
+                                        {{ sefer.sefer_kodu }} - {{ sefer.baslangic_sehri }} -> {{ sefer.bitis_sehri }} ({{ sefer.cikis_tarihi|date:"d.m.Y" }})
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fatura Kalemleri -->
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                        <h6 class="m-0 font-weight-bold text-primary">Fatura Kalemleri</h6>
+                        <button type="button" class="btn btn-sm btn-primary" id="kalemEkle">
+                            <i class="fas fa-plus fa-sm"></i> Kalem Ekle
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="kalemlerContainer">
+                            {% if fatura %}
+                                {% for urun in urunler %}
+                                <div class="kalem-satir">
+                                    <button type="button" class="btn btn-sm btn-danger kalem-sil-btn">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Ürün/Hizmet</label>
+                                            <input type="text" class="form-control" name="urun[]" value="{{ urun.UrunHizmetAdi }}" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Açıklama</label>
+                                            <input type="text" class="form-control" name="aciklama[]" value="">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-2">
+                                            <label class="form-label">Miktar</label>
+                                            <input type="number" step="0.01" class="form-control kalem-miktar" name="miktar[]" value="{{ urun.Miktar|floatformat:2 }}" required>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Birim</label>
+                                            <input type="text" class="form-control" name="birim[]" value="{{ urun.Birim }}">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Birim Fiyat (EUR)</label>
+                                            <input type="number" step="0.01" class="form-control kalem-birim-fiyat" name="birim_fiyat[]" value="{{ urun.BirimFiyat|floatformat:2 }}" required>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">KDV %</label>
+                                            <input type="number" step="1" class="form-control kalem-kdv" name="kdv[]" value="{{ urun.KDVOrani|floatformat:0 }}" required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Toplam (EUR)</label>
+                                            <input type="number" step="0.01" class="form-control kalem-toplam" name="toplam[]" value="{{ urun.Toplam|floatformat:2 }}" readonly>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <!-- Yeni fatura oluşturma için boş kalem satırı -->
+                                <div class="kalem-satir">
+                                    <button type="button" class="btn btn-sm btn-danger kalem-sil-btn">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Ürün/Hizmet</label>
+                                            <input type="text" class="form-control" name="urun[]" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Açıklama</label>
+                                            <input type="text" class="form-control" name="aciklama[]">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-2">
+                                            <label class="form-label">Miktar</label>
+                                            <input type="number" step="0.01" class="form-control kalem-miktar" name="miktar[]" value="1" required>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Birim</label>
+                                            <input type="text" class="form-control" name="birim[]" value="Adet">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Birim Fiyat (EUR)</label>
+                                            <input type="number" step="0.01" class="form-control kalem-birim-fiyat" name="birim_fiyat[]" value="0" required>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">KDV %</label>
+                                            <input type="number" step="1" class="form-control kalem-kdv" name="kdv[]" value="0" required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Toplam (EUR)</label>
+                                            <input type="number" step="0.01" class="form-control kalem-toplam" name="toplam[]" value="0" readonly>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Fatura Notları -->
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">Notlar</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <textarea class="form-control" id="notlar" name="notlar" rows="3">{{ fatura.Notlar|default:'' }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ödeme Bilgileri -->
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fas fa-money-bill-wave me-1"></i>
+                        Ödeme Bilgileri
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="odemeDurumu" class="form-label">Ödeme Durumu</label>
+                                <select class="form-select select2" id="odeme_durumu" name="odeme_durumu">
+                                    <option value="Ödenmedi" {% if fatura and fatura.OdemeDurumu == 'Ödenmedi' %}selected{% endif %}>Ödenmedi</option>
+                                    <option value="Kısmi Ödeme" {% if fatura and fatura.OdemeDurumu == 'Kısmi Ödeme' %}selected{% endif %}>Kısmi Ödeme</option>
+                                    <option value="Ödendi" {% if fatura and fatura.OdemeDurumu == 'Ödendi' %}selected{% endif %}>Ödendi</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="odenenTutar" class="form-label">Ödenen Tutar</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="odenen_tutar" name="odenen_tutar" value="{{ fatura.OdenenTutar|default:0 }}" {% if fatura and fatura.OdemeDurumu == 'Ödenmedi' %}readonly{% endif %}>
+                                    <span class="input-group-text">EUR</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Kasa seçimi - Conditional display based on payment status -->
+                        <div class="row mb-3" id="kasaSecimi" style="{% if not fatura or fatura.OdemeDurumu == 'Ödenmedi' %}display:none{% endif %}">
+                            <div class="col-md-12">
+                                <label for="odeme_kasa" class="form-label">Ödeme Kasası</label>
+                                <select class="form-select select2" name="odeme_kasa" id="odeme_kasa">
+                                    <option value="">Kasa Seçin</option>
+                                    {% for kasa in kasalar %}
+                                    <option value="{{ kasa.id }}">{{ kasa.kasa_adi }} ({{ kasa.para_birimi }})</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text text-muted">Ödeme yapılacak kasayı seçin</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">Fatura Özeti</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-6 text-muted">Ara Toplam:</div>
+                            <div class="col-6 text-end fw-bold" id="araToplam">{{ fatura.AraToplam|default:'0.00' }} EUR</div>
+                            <input type="hidden" name="ara_toplam" id="araToplamInput" value="{{ fatura.AraToplam|floatformat:2|default:'0.00' }}">
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6 text-muted">KDV Tutarı:</div>
+                            <div class="col-6 text-end fw-bold" id="kdvTutari">{{ fatura.KDVTutari|default:'0.00' }} EUR</div>
+                            <input type="hidden" name="kdv_orani" id="kdvTutariInput" value="{{ fatura.KDVOrani|floatformat:2|default:'0.00' }}">
+                        </div>
+                        <div class="row mb-4 border-top pt-2">
+                            <div class="col-6 text-muted fw-bold">Genel Toplam:</div>
+                            <div class="col-6 text-end fw-bold text-primary fs-5" id="genelToplam">{{ fatura.ToplamTutar|default:'0.00' }} EUR</div>
+                            <input type="hidden" name="genel_toplam" id="genelToplamInput" value="{{ fatura.ToplamTutar|floatformat:2|default:'0.00' }}">
+                        </div>
+                        
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-save fa-sm me-1"></i> Faturayı Kaydet
+                            </button>
+                            <a href="{% url 'fatura_list' %}" class="btn btn-secondary">
+                                İptal
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+<script>
+    $(document).ready(function() {
+        // Select2 için basit yapılandırma
+        console.log('Initializing Select2...');
+        console.log('Select2 elements found:', $('.select2').length);
+        $('.select2').each(function() {
+            console.log('Select2 element:', this.id);
+        });
+        
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        }).on('select2:open', function(e) {
+            console.log('Select2 opened:', this.id);
+        });
+        
+        // Flatpickr için yapılandırma
+        console.log('Initializing Flatpickr...');
+        console.log('Datepicker elements found:', $('.datepicker').length);
+        $('.datepicker').each(function() {
+            console.log('Datepicker element:', this.id);
+        });
+        
+        // Tarihleri doğrudan hedefle
+        $("#faturaTarihi, #vadeTarihi").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: "tr",
+            allowInput: true
+        });
+
+        // Ürün sayısını takip etmek için hidden input ekle
+        if ($('#kalemlerContainer').length > 0) {
+            var urunSayisi = $('.kalem-satir').length;
+            $('<input>').attr({
+                type: 'hidden',
+                id: 'urun_sayisi',
+                name: 'urun_sayisi',
+                value: urunSayisi
+            }).appendTo('#faturaForm');
+        }
+        
+        // Form gönderilirken ürün bilgilerini düzgün formatta ayarla
+        $('#faturaForm').on('submit', function() {
+            // Tüm kalemler için index'le
+            $('.kalem-satir').each(function(index) {
+                var i = index + 1;
+                
+                // Eski alan adlarını yeni formata dönüştür
+                $(this).find('input[name="urun[]"]').attr('name', 'urun_' + i + '_adi');
+                $(this).find('input[name="aciklama[]"]').attr('name', 'urun_' + i + '_aciklama');
+                $(this).find('input[name="miktar[]"]').attr('name', 'urun_' + i + '_miktar');
+                $(this).find('input[name="birim[]"]').attr('name', 'urun_' + i + '_birim');
+                $(this).find('input[name="birim_fiyat[]"]').attr('name', 'urun_' + i + '_fiyat');
+                $(this).find('input[name="kdv[]"]').attr('name', 'urun_' + i + '_kdv');
+                $(this).find('input[name="toplam[]"]').attr('name', 'urun_' + i + '_toplam');
+            });
+            
+            // Ürün sayısını güncelle
+            $('#urun_sayisi').val($('.kalem-satir').length);
+            
+            return true;
+        });
+        
+        // Toplam tutarı hesapla
+        function hesaplaTutarlar() {
+            var araToplam = 0;
+            var kdvToplam = 0;
+            
+            $('.kalem-satir').each(function() {
+                var miktar = parseFloat($(this).find('.kalem-miktar').val()) || 0;
+                var birimFiyat = parseFloat($(this).find('.kalem-birim-fiyat').val()) || 0;
+                var kdvOrani = parseFloat($(this).find('.kalem-kdv').val()) || 0;
+                
+                var satırToplam = miktar * birimFiyat;
+                var satırKdv = satırToplam * (kdvOrani / 100);
+                
+                $(this).find('.kalem-toplam').val(satırToplam.toFixed(2));
+                
+                araToplam += satırToplam;
+                kdvToplam += satırKdv;
+            });
+            
+            var genelToplam = araToplam + kdvToplam;
+            
+            $('#araToplam').text(araToplam.toFixed(2) + ' EUR');
+            $('#kdvTutari').text(kdvToplam.toFixed(2) + ' EUR');
+            $('#genelToplam').text(genelToplam.toFixed(2) + ' EUR');
+            
+            $('#araToplamInput').val(araToplam.toFixed(2));
+            $('#kdvTutariInput').val(kdvToplam.toFixed(2));
+            $('#genelToplamInput').val(genelToplam.toFixed(2));
+            
+            // Ödendi seçili ise ödenen tutarı güncelle
+            if (document.getElementById('odeme_durumu').value === 'Ödendi') {
+                document.getElementById('odenen_tutar').value = genelToplam.toFixed(2);
+            }
+        }
+        
+        // İlk yüklemede hesapla
+        hesaplaTutarlar();
+        
+        // Tüm input değişikliklerinde hesapla
+        $(document).on('input', '.kalem-miktar, .kalem-birim-fiyat, .kalem-kdv', function() {
+            hesaplaTutarlar();
+        });
+        
+        // Kalem ekleme
+        $('#kalemEkle').click(function() {
+            var yeniKalem = $('.kalem-satir').first().clone();
+            
+            // Input değerlerini sıfırla
+            var inputs = yeniKalem.find('input');
+            inputs.each(function(index) {
+                if (index !== 0 && index !== 1) { // Ürün ve açıklama hariç
+                    $(this).val('');
+                }
+            });
+            
+            $('#kalemlerContainer').append(yeniKalem);
+            hesaplaTutarlar();
+        });
+        
+        // Kalem silme
+        $(document).on('click', '.kalem-sil-btn', function() {
+            if ($('.kalem-satir').length > 1) {
+                $(this).closest('.kalem-satir').remove();
+                hesaplaTutarlar();
+            } else {
+                alert('En az bir fatura kalemi olmalıdır.');
+            }
+        });
+        
+        // Ödeme durumuna göre kasa seçimini göster/gizle
+        function updatePaymentFields() {
+            var odemeDurumu = document.getElementById('odeme_durumu').value;
+            var odemeKasaSection = document.getElementById('kasaSecimi');
+            
+            if (odemeDurumu === 'Ödenmedi') {
+                odemeKasaSection.style.display = 'none';
+                document.getElementById('odenen_tutar').value = '0';
+                document.getElementById('odenen_tutar').readOnly = true;
+            } else {
+                odemeKasaSection.style.display = 'block';
+                document.getElementById('odenen_tutar').readOnly = false;
+                
+                if (odemeDurumu === 'Ödendi') {
+                    document.getElementById('odenen_tutar').value = document.getElementById('genelToplamInput').value;
+                }
+            }
+            
+            console.log("Ödeme durumu değişti:", odemeDurumu);
+            console.log("Kasa seçimi görünürlüğü:", odemeKasaSection.style.display);
+        }
+        
+        // İlk yüklemede kontrol et
+        updatePaymentFields();
+        
+        // Ödeme durumu değişince tekrar kontrol et
+        $('#odeme_durumu').on('change', function() {
+            console.log("Ödeme durumu değişikliği algılandı");
+            updatePaymentFields();
+        });
+        
+        // Fatura tipi butonları
+        var faturaTipiButtons = document.querySelectorAll('.fatura-tipi-btn');
+        faturaTipiButtons.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var tip = this.getAttribute('data-tip');
+                
+                // Tüm butonları sıfırla
+                faturaTipiButtons.forEach(function(b) {
+                    b.style.backgroundColor = '';
+                    b.style.color = '';
+                    b.style.borderColor = '';
+                });
+                
+                // Tıklanan butonu aktifleştir
+                var renk = tip === 'Alış' ? '#36b9cc' : (tip === 'Satış' ? '#1cc88a' : '#4e73df');
+                this.style.backgroundColor = renk;
+                this.style.color = 'white';
+                this.style.borderColor = renk;
+                
+                // Input değerini ayarla
+                document.getElementById('faturaTipiInput').value = tip;
+                
+                // Nakliye seçiliyse sefer alanını göster
+                var seferAlani = document.getElementById('seferSecimAlani');
+                if (tip === 'Nakliye') {
+                    seferAlani.classList.remove('hidden');
+                    seferAlani.classList.add('visible');
+                } else {
+                    seferAlani.classList.remove('visible');
+                    seferAlani.classList.add('hidden');
+                }
+            });
+        });
+    });
+</script>
+{% endblock %} 

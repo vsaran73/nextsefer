@@ -1,0 +1,222 @@
+{% extends 'sefer_app/base.html' %}
+{% load custom_filters %}
+
+{% block title %}{% if uyari %}Uyarı Düzenle{% else %}Yeni Uyarı Ekle{% endif %} - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+    
+    .priority-high {
+        color: #e74a3b;
+        font-weight: bold;
+    }
+    
+    .priority-medium {
+        color: #f6c23e;
+        font-weight: bold;
+    }
+    
+    .priority-low {
+        color: #1cc88a;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}{% if uyari %}Uyarı Düzenle{% else %}Yeni Uyarı Ekle{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">
+            {% if uyari %}Uyarı Düzenle{% else %}Yeni Uyarı Ekle{% endif %}
+        </h1>
+        <a href="{% url 'uyari_list' %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Uyarılar Listesine Dön
+        </a>
+    </div>
+
+    <!-- Form Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">
+                {% if uyari %}
+                    {{ uyari.arac.plaka }} - {{ uyari.get_uyari_turu_display }} Uyarısı Düzenleme
+                {% else %}
+                    Uyarı Bilgileri
+                {% endif %}
+            </h6>
+        </div>
+        <div class="card-body">
+            <form method="post" class="user">
+                {% csrf_token %}
+                
+                {% if messages %}
+                <div class="alert alert-danger">
+                    {% for message in messages %}
+                    <p>{{ message }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="arac">Araç:</label>
+                            <select name="arac" id="arac" class="form-control select2" required>
+                                <option value="">Araç Seçin</option>
+                                {% for arac in araclar %}
+                                <option value="{{ arac.id }}" {% if uyari.arac.id == arac.id %}selected{% endif %}>
+                                    {{ arac.plaka }} - {{ arac.marka }} {{ arac.model }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="uyari_turu">Uyarı Türü:</label>
+                            <select name="uyari_turu" id="uyari_turu" class="form-control" required>
+                                <option value="">Uyarı Türü Seçin</option>
+                                <option value="muayene" {% if uyari.uyari_turu == 'muayene' %}selected{% endif %}>Muayene</option>
+                                <option value="sigorta" {% if uyari.uyari_turu == 'sigorta' %}selected{% endif %}>Sigorta</option>
+                                <option value="bakim" {% if uyari.uyari_turu == 'bakim' %}selected{% endif %}>Bakım</option>
+                                <option value="vergi" {% if uyari.uyari_turu == 'vergi' %}selected{% endif %}>Vergi</option>
+                                <option value="lastik" {% if uyari.uyari_turu == 'lastik' %}selected{% endif %}>Lastik Değişimi</option>
+                                <option value="yag" {% if uyari.uyari_turu == 'yag' %}selected{% endif %}>Yağ Değişimi</option>
+                                <option value="belge" {% if uyari.uyari_turu == 'belge' %}selected{% endif %}>Belge Yenileme</option>
+                                <option value="diger" {% if uyari.uyari_turu == 'diger' %}selected{% endif %}>Diğer</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-3">
+                    <label for="uyari_mesaji">Uyarı Mesajı:</label>
+                    <textarea name="uyari_mesaji" id="uyari_mesaji" class="form-control" rows="3" required>{{ uyari.uyari_mesaji }}</textarea>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="son_tarih">Son Tarih:</label>
+                            <input type="date" name="son_tarih" id="son_tarih" 
+                                class="form-control datepicker" 
+                                value="{% if uyari.son_tarih %}{{ uyari.son_tarih|date:'Y-m-d' }}{% endif %}">
+                            <small class="text-muted">Tarih belirtmezseniz sürekli uyarı olarak kaydedilecektir.</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="hatirlatici_gun">Hatırlatma (Gün):</label>
+                            <input type="number" name="hatirlatici_gun" id="hatirlatici_gun" 
+                                class="form-control" 
+                                value="{{ uyari.hatirlatici_gun|default:7 }}" min="1" max="30">
+                            <small class="text-muted">Son tarihten kaç gün önce hatırlatma yapılacağı.</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="durum">Durum:</label>
+                            <select name="durum" id="durum" class="form-control">
+                                <option value="aktif" {% if uyari.durum == 'aktif' %}selected{% endif %}>Aktif</option>
+                                <option value="tamamlandi" {% if uyari.durum == 'tamamlandi' %}selected{% endif %}>Tamamlandı</option>
+                                <option value="ertelendi" {% if uyari.durum == 'ertelendi' %}selected{% endif %}>Ertelendi</option>
+                                <option value="iptal" {% if uyari.durum == 'iptal' %}selected{% endif %}>İptal</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="oncelik">Öncelik:</label>
+                            <select name="oncelik" id="oncelik" class="form-control">
+                                <option value="dusuk" {% if uyari.oncelik == 'dusuk' %}selected{% endif %} class="priority-low">Düşük</option>
+                                <option value="orta" {% if uyari.oncelik == 'orta' or not uyari.oncelik %}selected{% endif %} class="priority-medium">Normal</option>
+                                <option value="yuksek" {% if uyari.oncelik == 'yuksek' %}selected{% endif %} class="priority-high">Yüksek</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="bildirim_turu">Bildirim Türü:</label>
+                            <select name="bildirim_turu" id="bildirim_turu" class="form-control">
+                                <option value="Sistem" {% if uyari.bildirim_turu == 'Sistem' or not uyari.bildirim_turu %}selected{% endif %}>Sistem</option>
+                                <option value="E-posta" {% if uyari.bildirim_turu == 'E-posta' %}selected{% endif %}>E-posta</option>
+                                <option value="SMS" {% if uyari.bildirim_turu == 'SMS' %}selected{% endif %}>SMS</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-3">
+                    <label for="notlar">Notlar:</label>
+                    <textarea name="notlar" id="notlar" class="form-control" rows="3">{{ uyari.notlar }}</textarea>
+                </div>
+                
+                <div class="mt-4 d-flex justify-content-between">
+                    <a href="{% url 'uyari_list' %}" class="btn btn-secondary">
+                        <i class="fas fa-times fa-sm"></i> İptal
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save fa-sm text-white-50 me-1"></i> 
+                        {% if uyari %}Uyarıyı Güncelle{% else %}Uyarıyı Kaydet{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    $(document).ready(function() {
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: {
+                    shorthand: ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct'],
+                    longhand: ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+                },
+                months: {
+                    shorthand: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+                    longhand: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+                }
+            }
+        });
+    });
+</script>
+{% endblock %} 

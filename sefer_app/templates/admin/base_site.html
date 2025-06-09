@@ -1,0 +1,113 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | Sefer Yönetim Sistemi{% endblock %}
+
+{% block extrastyle %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/admin_custom.css' %}" />
+<style>
+    :root {
+        --primary: #1a3d66;
+        --secondary: #2a5298;
+        --accent: #4d76c9;
+        --primary-fg: #fff;
+    }
+
+    #header {
+        background: var(--primary);
+        color: var(--primary-fg);
+    }
+    
+    #user-tools a {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    #user-tools a:focus, #user-tools a:hover {
+        border-bottom-color: var(--primary-fg);
+        color: var(--primary-fg);
+    }
+    
+    .module h2, .module caption, .inline-group h2 {
+        background: var(--secondary);
+    }
+    
+    div.breadcrumbs {
+        background: var(--secondary);
+    }
+    
+    a:link, a:visited {
+        color: var(--accent);
+    }
+    
+    .selector-chosen h2 {
+        background: var(--secondary) !important;
+    }
+    
+    .button, input[type=submit], input[type=button], .submit-row input, a.button {
+        background: var(--secondary);
+    }
+    
+    .button:hover, input[type=submit]:hover, input[type=button]:hover {
+        background: var(--accent);
+    }
+    
+    .button.default, input[type=submit].default, .submit-row input.default {
+        background: var(--primary);
+    }
+    
+    .button.default:hover, input[type=submit].default:hover {
+        background: var(--accent);
+    }
+
+    /* User profile section style */
+    .profile-section {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .profile-picture {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin-right: 10px;
+        object-fit: cover;
+        background-color: #ddd;
+    }
+
+    .profile-name {
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        Sefer Yönetim Sistemi
+    </a>
+</h1>
+{% endblock %}
+
+{% block welcome-msg %}
+    {% if user.is_authenticated %}
+    <div class="profile-section">
+        {% if user.profile.profile_picture %}
+            <img src="{{ user.profile.profile_picture.url }}" alt="{{ user.username }}" class="profile-picture">
+        {% else %}
+            <div class="profile-picture"></div>
+        {% endif %}
+        <span class="profile-name">{{ user.get_full_name|default:user.username }}</span>
+    </div>
+    {% endif %}
+    {{ block.super }}
+{% endblock %}
+
+{% block usertools %}
+    {{ block.super }}
+    {% if user.is_authenticated %}
+    <div style="padding: 5px 10px; margin-top: 5px;">
+        <a href="javascript:void(0);" onclick="window.location.href='/profile/'" style="color: white; text-decoration: underline;">Profil</a>
+    </div>
+    {% endif %}
+{% endblock %} 

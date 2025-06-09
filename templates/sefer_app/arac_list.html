@@ -1,0 +1,266 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Araçlar - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}Araçlar{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Araçlar</h1>
+        <div>
+            <a href="{% url 'bakim_list' %}" class="btn btn-sm btn-info shadow-sm me-2">
+                <i class="fas fa-tools fa-sm text-white-50 me-1"></i> Bakımlar
+            </a>
+            <a href="{% url 'uyari_list' %}" class="btn btn-sm btn-warning shadow-sm me-2">
+                <i class="fas fa-exclamation-triangle fa-sm text-white-50 me-1"></i> Uyarılar
+            </a>
+            <a href="{% url 'arac_create' %}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-plus fa-sm text-white-50 me-1"></i> Yeni Araç Ekle
+            </a>
+        </div>
+    </div>
+
+    <!-- Genel Bilgi Bandı -->
+    <div class="card shadow mb-4">
+        <div class="card-body p-0">
+            <div class="row g-0">
+                <div class="col-md-2 bg-light p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-truck-moving text-primary mb-2" style="font-size: 2rem;"></i>
+                    <h5 class="mb-0">{{ toplam_arac_sayisi }}</h5>
+                    <p class="text-muted small mb-0">Toplam Araç</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-check-circle text-success mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ aktif_arac_sayisi }}</h6>
+                    <p class="text-muted small mb-0">Aktif Araçlar</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-times-circle text-secondary mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ pasif_arac_sayisi }}</h6>
+                    <p class="text-muted small mb-0">Pasif Araçlar</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-exclamation-triangle text-danger mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ uyari_sayisi }}</h6>
+                    <p class="text-muted small mb-0">Uyarı Bulunanlar</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-tachometer-alt text-info mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ ortalama_kilometre|floatformat:0 }} km</h6>
+                    <p class="text-muted small mb-0">Seferlerin Ort. Km.</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center">
+                    <i class="fas fa-road text-info mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ toplam_km|floatformat:0 }} km</h6>
+                    <p class="text-muted small mb-0">Toplam Km</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtreleme ve Arama -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Araç Filtrele</h6>
+            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
+        <div class="collapse" id="filterCollapse">
+            <div class="card-body">
+                <form method="get" class="mb-0">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label for="arac_durumu" class="form-label">Durum</label>
+                            <select name="arac_durumu" id="arac_durumu" class="form-select form-control select2">
+                                <option value="">Tümü</option>
+                                <option value="Aktif" {% if request.GET.arac_durumu == 'Aktif' %}selected{% endif %}>Aktif</option>
+                                <option value="Bakımda" {% if request.GET.arac_durumu == 'Bakımda' %}selected{% endif %}>Bakımda</option>
+                                <option value="Arızalı" {% if request.GET.arac_durumu == 'Arızalı' %}selected{% endif %}>Arızalı</option>
+                                <option value="Pasif" {% if request.GET.arac_durumu == 'Pasif' %}selected{% endif %}>Pasif</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="arac_tipi" class="form-label">Araç Tipi</label>
+                            <select name="arac_tipi" id="arac_tipi" class="form-select form-control select2">
+                                <option value="">Tümü</option>
+                                <option value="Tır" {% if request.GET.arac_tipi == 'Tır' %}selected{% endif %}>Tır</option>
+                                <option value="Kamyon" {% if request.GET.arac_tipi == 'Kamyon' %}selected{% endif %}>Kamyon</option>
+                                <option value="Kamyonet" {% if request.GET.arac_tipi == 'Kamyonet' %}selected{% endif %}>Kamyonet</option>
+                                <option value="Minibüs" {% if request.GET.arac_tipi == 'Minibüs' %}selected{% endif %}>Minibüs</option>
+                                <option value="Otomobil" {% if request.GET.arac_tipi == 'Otomobil' %}selected{% endif %}>Otomobil</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="arama" class="form-label">Arama</label>
+                            <input type="text" name="arama" id="arama" class="form-control" placeholder="Plaka, marka, model..." value="{{ request.GET.arama|default:'' }}">
+                        </div>
+                        <div class="col-md-2 mb-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-search fa-sm"></i> Filtrele
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Araç Tablosu -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Araç Listesi</h6>
+            <div>
+                <form method="post" action="{% url 'arac_list' %}" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="export_format" value="excel">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-file-excel fa-sm"></i> Excel
+                    </button>
+                </form>
+                <form method="post" action="{% url 'arac_list' %}" class="d-inline ms-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="export_format" value="pdf">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="fas fa-file-pdf fa-sm"></i> PDF
+                    </button>
+                </form>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="araclarTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Plaka</th>
+                            <th>Marka / Model</th>
+                            <th>Araç Tipi</th>
+                            <th>Durum</th>
+                            <th>Atanmış Şoför</th>
+                            <th>İlk KM</th>
+                            <th>Güncel KM</th>
+                            <th>Yakıt Tipi</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for arac in araclar %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'arac_detail' arac.id %}" class="fw-bold text-primary">
+                                    {{ arac.plaka }}
+                                </a>
+                            </td>
+                            <td>{{ arac.marka }} {{ arac.model }} {% if arac.model_yili %}({{ arac.model_yili }}){% endif %}</td>
+                            <td>{{ arac.arac_tipi }}</td>
+                            <td>
+                                <span class="badge {% if arac.arac_durumu == 'Aktif' %}bg-success{% elif arac.arac_durumu == 'Bakımda' %}bg-warning{% elif arac.arac_durumu == 'Arızalı' %}bg-danger{% else %}bg-secondary{% endif %} text-white">
+                                    {{ arac.arac_durumu }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if arac.atanmis_sofor %}
+                                <a href="{% url 'personel_detail' arac.atanmis_sofor.id %}">
+                                    {{ arac.atanmis_sofor.PerAd }} {{ arac.atanmis_sofor.PerSoyad }}
+                                </a>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ arac.ilk_kilometre|default:0 }} km</td>
+                            <td>{{ arac.kilometre|default:0 }} km</td>
+                            <td>{{ arac.yakit_tipi }}</td>
+                            <td class="text-center">
+                                <div class="btn-group">
+                                    <a href="{% url 'arac_detail' arac.id %}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <a href="{% url 'arac_update' arac.id %}" class="btn btn-sm btn-info">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'arac_delete' arac.id %}" class="btn btn-sm btn-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <div class="alert alert-info mb-0">
+                                    <i class="fas fa-info-circle me-2"></i> Kayıtlı araç bulunamadı.
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+<script>
+    $(document).ready(function() {
+        // DataTable başlatma
+        var table = $('#araclarTable').DataTable({
+            language: {
+                url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/tr.json"
+            },
+            order: [[0, 'asc']], // Plakaya göre sırala
+            pageLength: 25,
+            responsive: true
+        });
+        
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: "tr",
+            allowInput: true
+        });
+        
+        // Filter açılışı kontrolü
+        {% if request.GET.arac_durumu or request.GET.arac_tipi or request.GET.arama %}
+        // Eğer filtreler varsa filtre panelini aç
+        $('#filterCollapse').addClass('show');
+        {% endif %}
+    });
+</script>
+{% endblock %} 

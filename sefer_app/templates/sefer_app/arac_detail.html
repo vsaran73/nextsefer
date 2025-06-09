@@ -1,0 +1,343 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{{ arac.plaka }} - Araç Detayı{% endblock %}
+
+{% block page_title %}Araç Detayı{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">{{ arac.plaka }} - {{ arac.marka }} {{ arac.model }}</h1>
+        <div>
+            <a href="{% url 'arac_detail_pdf' pk=arac.id %}" class="btn btn-sm btn-danger shadow-sm me-2">
+                <i class="fas fa-file-pdf fa-sm text-white-50 me-1"></i> PDF
+            </a>
+            <a href="{% url 'bakim_create' %}?arac={{ arac.id }}" class="btn btn-sm btn-info shadow-sm me-2">
+                <i class="fas fa-tools fa-sm text-white-50 me-1"></i> Bakım Ekle
+            </a>
+            <a href="{% url 'uyari_ekle' %}?arac={{ arac.id }}" class="btn btn-sm btn-warning shadow-sm me-2">
+                <i class="fas fa-exclamation-triangle fa-sm text-white-50 me-1"></i> Uyarı Ekle
+            </a>
+            <a href="{% url 'arac_update' arac.id %}" class="btn btn-sm btn-primary shadow-sm me-2">
+                <i class="fas fa-edit fa-sm text-white-50 me-1"></i> Düzenle
+            </a>
+            <a href="{% url 'arac_list' %}" class="btn btn-sm btn-secondary shadow-sm">
+                <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Araçlar Listesine Dön
+            </a>
+        </div>
+    </div>
+
+    <!-- Araç Bilgileri -->
+    <div class="row">
+        <!-- Temel Bilgiler -->
+        <div class="col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Araç Bilgileri</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <div class="card border-left-primary h-100 py-2">
+                                <div class="card-body">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                                Durum
+                                            </div>
+                                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                                <span class="badge {% if arac.arac_durumu == 'Aktif' %}bg-success{% elif arac.arac_durumu == 'Bakımda' %}bg-warning{% elif arac.arac_durumu == 'Arızalı' %}bg-danger{% else %}bg-secondary{% endif %} text-white">
+                                                    {{ arac.arac_durumu }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="col-auto">
+                                            <i class="fas fa-truck-moving fa-2x text-gray-300"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="card border-left-success h-100 py-2">
+                                <div class="card-body">
+                                    <div class="row no-gutters align-items-center">
+                                        <div class="col mr-2">
+                                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                                İlk Kilometre
+                                            </div>
+                                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                                {{ arac.ilk_kilometre|default:0 }} km
+                                            </div>
+                                        </div>
+                                        <div class="col-auto">
+                                            <i class="fas fa-tachometer-alt fa-2x text-gray-300"></i>
+                                        </div>
+                                    </div>
+                                    {% if son_sefer %}
+                                    <div class="mt-2 small text-muted">
+                                        <i class="fas fa-info-circle"></i> Son sefer kilometre: 
+                                        <a href="{% url 'sefer_detail' son_sefer.id %}">{{ son_sefer.sefer_kodu }}</a> 
+                                        ({% if son_sefer.bitis_km %}
+                                            {{ son_sefer.bitis_km }} km, {{ son_sefer.varis_tarihi|date:"d.m.Y"|default:son_sefer.cikis_tarihi|date:"d.m.Y" }}
+                                         {% else %}
+                                            {{ son_sefer.baslangic_km|default:"?" }} km, {{ son_sefer.cikis_tarihi|date:"d.m.Y" }}
+                                         {% endif %})
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th style="width: 35%">Plaka</th>
+                                <td>{{ arac.plaka }}</td>
+                            </tr>
+                            <tr>
+                                <th>Marka / Model</th>
+                                <td>{{ arac.marka }} {{ arac.model }} {% if arac.model_yili %}({{ arac.model_yili }}){% endif %}</td>
+                            </tr>
+                            <tr>
+                                <th>Araç Tipi</th>
+                                <td>{{ arac.arac_tipi }}</td>
+                            </tr>
+                            <tr>
+                                <th>Kullanım Şekli</th>
+                                <td>{{ arac.kullanim_sekli }}</td>
+                            </tr>
+                            <tr>
+                                <th>Yakıt Tipi</th>
+                                <td>{{ arac.yakit_tipi }}</td>
+                            </tr>
+                            <tr>
+                                <th>Lastik Ölçüleri</th>
+                                <td>{{ arac.lastik_olculeri|default:"-" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Motor No</th>
+                                <td>{{ arac.motor_no|default:"-" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Şasi No</th>
+                                <td>{{ arac.sasi_no|default:"-" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Atanmış Şoför</th>
+                                <td>
+                                    {% if arac.atanmis_sofor %}
+                                    <a href="{% url 'personel_detail' arac.atanmis_sofor.id %}">
+                                        {{ arac.atanmis_sofor.PerAd }} {{ arac.atanmis_sofor.PerSoyad }}
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bakım ve Uyarılar -->
+        <div class="col-lg-6">
+            <!-- Bakımlar -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Son Bakımlar</h6>
+                    <a href="{% url 'bakim_create' %}?arac={{ arac.id }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-plus fa-sm"></i> Yeni Bakım
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if bakimlar %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Tür</th>
+                                    <th>Yapılan İşlemler</th>
+                                    <th>Maliyet</th>
+                                    <th>Sonraki Bakım</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for bakim in bakimlar|slice:":5" %}
+                                <tr>
+                                    <td>{{ bakim.bakim_tarihi|date:"d.m.Y" }}</td>
+                                    <td>{{ bakim.bakim_turu }}</td>
+                                    <td>{{ bakim.yapilan_islemler|truncatechars:30 }}</td>
+                                    <td>{{ bakim.maliyet }} ₺</td>
+                                    <td>
+                                        {% if bakim.bir_sonraki_bakim_tarihi %}
+                                        {{ bakim.bir_sonraki_bakim_tarihi|date:"d.m.Y" }}
+                                        {% elif bakim.bir_sonraki_bakim_km %}
+                                        {{ bakim.bir_sonraki_bakim_km }} km
+                                        {% else %}
+                                        -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if bakimlar.count > 5 %}
+                    <div class="text-center mt-3">
+                        <a href="{% url 'bakim_list' %}?arac={{ arac.id }}" class="btn btn-sm btn-primary">
+                            Tüm Bakımları Gör ({{ bakimlar.count }})
+                        </a>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-info-circle me-2"></i> Bu araca ait bakım kaydı bulunmamaktadır.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Uyarılar -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-warning">Aktif Uyarılar</h6>
+                    <a href="{% url 'uyari_ekle' %}?arac={{ arac.id }}" class="btn btn-sm btn-warning">
+                        <i class="fas fa-plus fa-sm"></i> Yeni Uyarı
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if uyarilar %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Tür</th>
+                                    <th>Mesaj</th>
+                                    <th>Son Tarih</th>
+                                    <th>Durum</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for uyari in uyarilar|slice:":5" %}
+                                <tr>
+                                    <td>{{ uyari.olusturma_tarihi|date:"d.m.Y" }}</td>
+                                    <td>{{ uyari.uyari_turu }}</td>
+                                    <td>{{ uyari.uyari_mesaji|truncatechars:30 }}</td>
+                                    <td>
+                                        {% if uyari.son_tarih %}
+                                        {{ uyari.son_tarih|date:"d.m.Y" }}
+                                        {% else %}
+                                        -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if uyari.durum == 'Aktif' %}bg-danger{% else %}bg-success{% endif %} text-white">
+                                            {{ uyari.durum }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if uyarilar.count > 5 %}
+                    <div class="text-center mt-3">
+                        <a href="{% url 'uyari_list' %}?arac={{ arac.id }}" class="btn btn-sm btn-warning">
+                            Tüm Uyarıları Gör ({{ uyarilar.count }})
+                        </a>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-info-circle me-2"></i> Bu araca ait aktif uyarı bulunmamaktadır.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Seferler -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Son Seferler</h6>
+        </div>
+        <div class="card-body">
+            {% if seferler %}
+            <div class="table-responsive">
+                <table class="table table-bordered" id="seferlerTable">
+                    <thead>
+                        <tr>
+                            <th>Sefer No</th>
+                            <th>Çıkış Tarihi</th>
+                            <th>Rota</th>
+                            <th>Firma</th>
+                            <th>Şoför</th>
+                            <th>Durum</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sefer in seferler %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'sefer_detail' sefer.id %}" class="text-primary fw-bold">
+                                    {{ sefer.sefer_kodu }}
+                                </a>
+                            </td>
+                            <td>{{ sefer.cikis_tarihi|date:"d.m.Y" }}</td>
+                            <td>
+                                {% if sefer.guzergah %}
+                                    {{ sefer.guzergah|truncatechars:40 }}
+                                {% else %}
+                                    {{ sefer.baslangic_sehri.sehir_adi }}, {{ sefer.baslangic_ulkesi.ulke_adi }} → 
+                                    {{ sefer.bitis_sehri.sehir_adi }}, {{ sefer.bitis_ulkesi.ulke_adi }}
+                                {% endif %}
+                            </td>
+                            <td>{{ sefer.firma.FirmaAdi }}</td>
+                            <td>{{ sefer.personel.PerAd }} {{ sefer.personel.PerSoyad }}</td>
+                            <td>
+                                <span class="badge {% if sefer.durum == 'Aktif' %}bg-success{% elif sefer.durum == 'Tamamlandı' %}bg-info{% else %}bg-danger{% endif %} text-white">
+                                    {{ sefer.durum }}
+                                </span>
+                            </td>
+                            <td>
+                                <a href="{% url 'sefer_detail' sefer.id %}" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-info-circle me-2"></i> Bu araca ait sefer kaydı bulunmamaktadır.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // DataTable başlatma
+        $('#seferlerTable').DataTable({
+            language: {
+                url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/tr.json"
+            },
+            order: [[1, 'desc']], // Çıkış tarihine göre sırala
+            pageLength: 10
+        });
+    });
+</script>
+{% endblock %} 

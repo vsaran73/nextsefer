@@ -1,0 +1,68 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Firma Sil - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block page_title %}Firma Sil{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Firma Sil</h1>
+        <a href="{% url 'firma_list' %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Firma Listesine Dön
+        </a>
+    </div>
+
+    <!-- Silme Onay Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-danger">Silme Onayı</h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <h5>Dikkat!</h5>
+                <p>Aşağıdaki firmayı silmek üzeresiniz. Bu işlem geri alınamaz. Bu firmaya bağlı tüm faturalar, ödemeler ve seferler orphaned olacaktır (silinmeyecektir).</p>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="font-weight-bold text-primary mb-0">Firma Bilgileri</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Firma Adı:</strong> {{ firma.FirmaAdi }}</p>
+                            <p><strong>Firma Tipi:</strong> {{ firma.FirmaTipi }}</p>
+                            <p><strong>Vergi No:</strong> {{ firma.VergiNumarasi|default:"-" }}</p>
+                            <p><strong>Vergi Dairesi:</strong> {{ firma.VergiDairesi|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Yetkili Kişi:</strong> {{ firma.YetkiliKisi|default:"-" }}</p>
+                            <p><strong>Telefon:</strong> {{ firma.Telefon|default:"-" }}</p>
+                            <p><strong>E-posta:</strong> {{ firma.Eposta|default:"-" }}</p>
+                            <p><strong>Durum:</strong> {% if firma.AktifMi %}Aktif{% else %}Pasif{% endif %}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'firma_list' %}" class="btn btn-secondary">İptal</a>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash fa-sm text-white-50 me-1"></i> Firmayı Sil
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 
+ 
+ 
+ 
+ 
+ 
+ 

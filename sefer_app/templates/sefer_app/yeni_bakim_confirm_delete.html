@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}Bakım Kaydını Sil{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">Bakım Kaydını Sil</h5>
+        </div>
+        <div class="card-body">
+            <p class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <strong>{{ bakim.arac.plaka }}</strong> aracına ait <strong>{{ bakim.bakim_turu }}</strong> bakım kaydını silmek istediğinizden emin misiniz?
+            </p>
+            
+            <div class="card mb-3">
+                <div class="card-header">Bakım Bilgileri</div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>Araç:</span>
+                            <span>{{ bakim.arac.plaka }} - {{ bakim.arac.marka }} {{ bakim.arac.model }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>Bakım Türü:</span>
+                            <span>{{ bakim.bakim_turu }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>Bakım Tarihi:</span>
+                            <span>{{ bakim.bakim_tarihi }}</span>
+                        </li>
+                        {% if bakim.kilometre %}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>Kilometre:</span>
+                            <span>{{ bakim.kilometre }} km</span>
+                        </li>
+                        {% endif %}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>Tutar:</span>
+                            <span>{{ bakim.maliyet }} {{ bakim.para_birimi }} ({{ bakim.maliyet_eur }} EUR)</span>
+                        </li>
+                        {% if bakim.kasa_hareketi and bakim.kasa_hareketi.belge_no %}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span>Belge No:</span>
+                            <span>{{ bakim.kasa_hareketi.belge_no }}</span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="alert alert-danger">
+                <strong>Uyarı:</strong> Bu işlem geri alınamaz ve ilişkili kasa hareketleri de silinecektir.
+            </div>
+            
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'arac_detail' pk=bakim.arac.id %}" class="btn btn-secondary">İptal</a>
+                    <button type="submit" class="btn btn-danger">Sil</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

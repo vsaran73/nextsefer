@@ -1,0 +1,334 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{{ firma.FirmaAdi }} - Cari Detayı - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block page_title %}{{ firma.FirmaAdi }} - Cari Detayı{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">{{ firma.FirmaAdi }}</h1>
+        <div>
+            <a href="{% url 'firma_print' firma.id %}" class="btn btn-sm btn-primary shadow-sm me-2" target="_blank">
+                <i class="fas fa-print fa-sm text-white-50 me-1"></i> Yazdır
+            </a>
+            <a href="{% url 'firma_pdf' firma.id %}" class="btn btn-sm btn-danger shadow-sm me-2" target="_blank">
+                <i class="fas fa-file-pdf fa-sm text-white-50 me-1"></i> PDF
+            </a>
+            <a href="{% url 'firma_update' firma.id %}" class="btn btn-sm btn-info shadow-sm me-2">
+                <i class="fas fa-edit fa-sm text-white-50 me-1"></i> Düzenle
+            </a>
+            <a href="{% url 'firma_list' %}" class="btn btn-sm btn-secondary shadow-sm">
+                <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Cari Listesine Dön
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Sol Kolon - Firma Bilgileri -->
+        <div class="col-xl-4 col-md-6 mb-4">
+            <!-- Firma Kartı -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Cari Bilgileri</h6>
+                    <span class="badge {% if firma.FirmaTipi == 'Müşteri' %}bg-success{% elif firma.FirmaTipi == 'Tedarikçi' %}bg-info{% else %}bg-warning{% endif %} text-white px-3 py-2">
+                        {{ firma.FirmaTipi }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-2">
+                        <div class="col-sm-4 text-muted">Durum:</div>
+                        <div class="col-sm-8">
+                            {% if firma.AktifMi %}
+                            <span class="badge bg-success text-white">Aktif</span>
+                            {% else %}
+                            <span class="badge bg-danger text-white">Pasif</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 text-muted">Yetkili Kişi:</div>
+                        <div class="col-sm-8">{{ firma.YetkiliKisi|default:"-" }}</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 text-muted">Telefon:</div>
+                        <div class="col-sm-8">
+                            {% if firma.Telefon %}
+                            <a href="tel:{{ firma.Telefon }}" class="text-primary">{{ firma.Telefon }}</a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 text-muted">E-posta:</div>
+                        <div class="col-sm-8">
+                            {% if firma.Eposta %}
+                            <a href="mailto:{{ firma.Eposta }}" class="text-primary">{{ firma.Eposta }}</a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 text-muted">Web Sitesi:</div>
+                        <div class="col-sm-8">
+                            {% if firma.WebSitesi %}
+                            <a href="{{ firma.WebSitesi }}" target="_blank" class="text-primary">{{ firma.WebSitesi }}</a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 text-muted">Vergi No:</div>
+                        <div class="col-sm-8">{{ firma.VergiNumarasi|default:"-" }}</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 text-muted">Vergi Dairesi:</div>
+                        <div class="col-sm-8">{{ firma.VergiDairesi|default:"-" }}</div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-sm-4 text-muted">Para Birimi:</div>
+                        <div class="col-sm-8">{{ firma.ParaBirimi }}</div>
+                    </div>
+                    <div class="row mb-4">
+                        <div class="col-sm-4 text-muted">Adres:</div>
+                        <div class="col-sm-8">{{ firma.Adres|default:"-"|linebreaks }}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Finansal Özet -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Finansal Özet</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="text-xs font-weight-bold text-uppercase mb-1">
+                                {% if firma.FirmaTipi == 'Tedarikçi' %}
+                                    Toplam Alacak
+                                {% else %}
+                                    Toplam Borç
+                                {% endif %}
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold {% if firma.FirmaTipi == 'Tedarikçi' %}text-primary{% else %}text-gray-800{% endif %}">{{ borc_toplam|default:'0.00' }} €</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="text-xs font-weight-bold text-uppercase mb-1">
+                                {% if firma.FirmaTipi == 'Tedarikçi' %}
+                                    Toplam Ödeme
+                                {% else %}
+                                    Toplam Tahsilat
+                                {% endif %}
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-success">{{ tahsilat_toplam|default:'0.00' }} €</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <div class="text-xs font-weight-bold text-uppercase mb-1">
+                                {% if firma.FirmaTipi == 'Tedarikçi' %}
+                                    Cari Alacak (Borç - Tahsilat)
+                                {% else %}
+                                    Cari Bakiye (Borç - Tahsilat)
+                                {% endif %}
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold {% if bakiye >= 0 %}text-danger{% else %}text-success{% endif %}">
+                                {{ bakiye|default:'0.00' }} €
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Debug information -->
+                    {% if user.is_superuser %}
+                    <div class="row mb-3 mt-4">
+                        <div class="col-md-12">
+                            <div class="card bg-light">
+                                <div class="card-header">Finansal Bilgiler</div>
+                                <div class="card-body">
+                                    <p><strong>Firma Tipi:</strong> {{ firma.FirmaTipi }}</p>
+                                    <p><strong>Alış Toplam:</strong> {{ alis_toplam|default:'0.00' }} €</p>
+                                    <p><strong>Satış Toplam:</strong> {{ satis_toplam|default:'0.00' }} €</p>
+                                    <p><strong>Borç Toplam:</strong> {{ borc_toplam|default:'0.00' }} €</p>
+                                    <p><strong>Tahsilat Toplam:</strong> {{ tahsilat_toplam|default:'0.00' }} €</p>
+                                    <p><strong>Bakiye:</strong> {{ bakiye|default:'0.00' }} €</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <hr>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="text-xs font-weight-bold text-uppercase mb-1">
+                                Son İşlem Tarihi
+                            </div>
+                            <div class="h6 mb-0 font-weight-bold text-gray-800">{{ son_islem_tarihi|default:'-' }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="text-xs font-weight-bold text-uppercase mb-1">
+                                Toplam Sefer
+                            </div>
+                            <div class="h6 mb-0 font-weight-bold text-gray-800">{{ sefer_sayisi }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Notlar -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Notlar</h6>
+                </div>
+                <div class="card-body">
+                    {% if firma.Notlar %}
+                    <p>{{ firma.Notlar|linebreaks }}</p>
+                    {% else %}
+                    <p class="text-muted">Bu cari için not bulunmamaktadır.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sağ Kolon - Faturalar ve Seferler -->
+        <div class="col-xl-8 col-md-6 mb-4">
+            <!-- Son Faturalar -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Son Faturalar</h6>
+                    <a href="{% url 'fatura_list' %}?firma={{ firma.id }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-file-invoice fa-sm"></i> Tüm Faturaları Gör
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Fatura No</th>
+                                    <th>Tipi</th>
+                                    <th>Tarih</th>
+                                    <th>Tutar</th>
+                                    <th>Ödeme Durumu</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for fatura in faturalar %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'fatura_detail' fatura.id %}" class="fw-bold text-primary">
+                                            {{ fatura.FaturaNo }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if fatura.FaturaTipi == 'Alış' %}bg-info{% elif fatura.FaturaTipi == 'Satış' %}bg-success{% else %}bg-primary{% endif %} text-white">
+                                            {{ fatura.FaturaTipi }}
+                                        </span>
+                                    </td>
+                                    <td>{{ fatura.FaturaTarihi|date:"d.m.Y" }}</td>
+                                    <td class="text-end">{{ fatura.ToplamTutar }} {{ fatura.ParaBirimi }}</td>
+                                    <td>
+                                        <span class="badge {% if fatura.OdemeDurumu == 'Ödendi' %}bg-success{% elif fatura.OdemeDurumu == 'Kısmi Ödeme' %}bg-warning{% else %}bg-danger{% endif %} text-white">
+                                            {{ fatura.OdemeDurumu }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="btn-group">
+                                            <a href="{% url 'fatura_detail' fatura.id %}" class="btn btn-sm btn-primary">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <a href="{% url 'fatura_update' fatura.id %}" class="btn btn-sm btn-info">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="alert alert-info mb-0">
+                                            <i class="fas fa-info-circle me-2"></i> Bu cari için fatura bulunmamaktadır.
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Son Seferler -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Son Seferler</h6>
+                    <a href="{% url 'sefer_list' %}?firma={{ firma.id }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-truck fa-sm"></i> Tüm Seferleri Gör
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Sefer Kodu</th>
+                                    <th>Güzergah</th>
+                                    <th>Çıkış Tarihi</th>
+                                    <th>Durum</th>
+                                    <th>Yük Cinsi</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sefer in seferler %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'sefer_detail' sefer.id %}" class="fw-bold text-primary">
+                                            {{ sefer.sefer_kodu }}
+                                        </a>
+                                    </td>
+                                    <td>{{ sefer.baslangic_sehri }} → {{ sefer.bitis_sehri }}</td>
+                                    <td>{{ sefer.cikis_tarihi|date:"d.m.Y" }}</td>
+                                    <td>
+                                        <span class="badge {% if sefer.durum == 'Aktif' %}bg-success{% elif sefer.durum == 'Tamamlandı' %}bg-info{% elif sefer.durum == 'İptal' %}bg-danger{% else %}bg-warning{% endif %} text-white">
+                                            {{ sefer.durum }}
+                                        </span>
+                                    </td>
+                                    <td>{{ sefer.yuk_cinsi }}</td>
+                                    <td class="text-center">
+                                        <div class="btn-group">
+                                            <a href="{% url 'sefer_detail' sefer.id %}" class="btn btn-sm btn-primary">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <a href="{% url 'sefer_update' sefer.id %}" class="btn btn-sm btn-info">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="alert alert-info mb-0">
+                                            <i class="fas fa-info-circle me-2"></i> Bu cari için sefer bulunmamaktadır.
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,1128 @@
+"""
+Cash register (Kasa) related views and operations.
+"""
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.http import JsonResponse
+from django.utils import timezone
+from django.db.models import Sum, Q, Value, Count, Case, When, F, DecimalField
+from django.db.models.functions import Coalesce
+from datetime import datetime, date
+from decimal import Decimal
+import json
+import requests
+import traceback
+
+from ..models import (
+    Kasalar, GenelKasaHareketi, ParaBirimleri, FaturaOdeme, 
+    Faturalar, SeferMasraf, KasaTransfer
+)
+from .helpers import safe_decimal
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.units import cm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# Para birimi sembolleri sözlüğü
+CURRENCY_SYMBOLS = {
+    'EUR': '€',
+    'TRY': '₺',
+    'USD': '$',
+    'GBP': '£',
+    'TL': '₺'  # Eski Türk Lirası kodu için de aynı sembol
+}
+
+def _resolve_currency_iso_code(para_birimi_value):
+    """Helper to resolve a para_birimi_value (ID or code) to a 3-letter ISO code."""
+    if not para_birimi_value:
+        return "XXX" # Belirsiz veya boş
+    
+    pb_val_str = str(para_birimi_value)
+    
+    try:
+        # Önce kod olarak dene
+        pb = ParaBirimleri.objects.get(kod__iexact=pb_val_str) # Büyük/küçük harf duyarsız ara
+        return pb.kod
+    except ParaBirimleri.DoesNotExist:
+        # Kod olarak bulunamazsa ve sayısal ise ID olarak dene
+        if pb_val_str.isdigit():
+            try:
+                pb_id = int(pb_val_str)
+                pb = ParaBirimleri.objects.get(id=pb_id)
+                return pb.kod
+            except (ParaBirimleri.DoesNotExist, ValueError):
+                print(f"Warning (resolve_currency): Value '{pb_val_str}' is not a valid ParaBirimleri ID.")
+                return "XXX"
+        else:
+            print(f"Warning (resolve_currency): Value '{pb_val_str}' is not a recognized ParaBirimleri code and not an ID.")
+            return "XXX"
+    except Exception as e:
+        print(f"Error resolving currency for value '{pb_val_str}': {e}")
+        return "XXX"
+
+def get_exchange_rate(from_currency, to_currency):
+    """Fetch exchange rate from Frankfurter.app API."""
+    if from_currency == to_currency:
+        return Decimal('1.0')
+    try:
+        # HTTPS kullandığından emin olun
+        response = requests.get(f"https://api.frankfurter.app/latest?from={from_currency}&to={to_currency}", timeout=5)
+        response.raise_for_status()  # HTTP hataları için exception fırlatır
+        data = response.json()
+        rate = data.get('rates', {}).get(to_currency)
+        if rate is not None:
+            return Decimal(str(rate))
+        else:
+            print(f"Error: Rate for {to_currency} not found in API response for base {from_currency}.")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching exchange rate for {from_currency} to {to_currency}: {e}")
+        return None
+    except json.JSONDecodeError:
+        print(f"Error decoding JSON response for {from_currency} to {to_currency}.")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred while fetching exchange rate: {e}")
+        return None
+
+def kasa_list(request):
+    """List all cash registers."""
+    kasalar_query = Kasalar.objects.all().order_by('kasa_adi')
+    
+    try:
+        # Calculate total initial balance
+        toplam_baslangic_bakiyesi = kasalar_query.aggregate(toplam=Sum('baslangic_bakiyesi'))['toplam'] or Decimal('0.0')
+        
+        toplam_guncel_bakiye_numeric = Decimal('0.0')
+
+        processed_kasalar = []
+        for kasa_instance in kasalar_query:
+            # Get income transactions
+            genel_gelir = GenelKasaHareketi.objects.filter(kasa=kasa_instance, hareket_tipi='Gelir').aggregate(
+                toplam=Coalesce(Sum('tutar'), Value(Decimal('0.0'), output_field=DecimalField()))
+            )['toplam']
+        
+            # Get expense transactions
+            genel_gider = GenelKasaHareketi.objects.filter(kasa=kasa_instance, hareket_tipi='Gider').aggregate(
+                toplam=Coalesce(Sum('tutar'), Value(Decimal('0.0'), output_field=DecimalField()))
+            )['toplam']
+        
+            # Get invoice payments
+            fatura_odeme = FaturaOdeme.objects.filter(Kasa=kasa_instance).aggregate(
+                toplam=Coalesce(Sum('Tutar'), Value(Decimal('0.0'), output_field=DecimalField()))
+            )['toplam']
+        
+            # Get trip expenses
+            sefer_masraf = SeferMasraf.objects.filter(Kasa=kasa_instance).aggregate(
+                toplam=Coalesce(Sum('TutarEUR'), Value(Decimal('0.0'), output_field=DecimalField()))
+            )['toplam']
+        
+            # Calculate current balance
+            guncel_bakiye = kasa_instance.baslangic_bakiyesi + genel_gelir - genel_gider + fatura_odeme - sefer_masraf
+            kasa_instance.guncel_bakiye = guncel_bakiye
+            
+            # Determine currency display name and code for balance
+            current_kasa_para_birimi_value = str(kasa_instance.para_birimi) if kasa_instance.para_birimi is not None else ""
+
+            kasa_instance.currency_display_name = current_kasa_para_birimi_value
+            kasa_instance.currency_code_for_balance = current_kasa_para_birimi_value
+
+            if current_kasa_para_birimi_value:
+                try:
+                    pb = ParaBirimleri.objects.get(kod=current_kasa_para_birimi_value)
+                    kasa_instance.currency_display_name = pb.ad
+                    kasa_instance.currency_code_for_balance = pb.kod
+                except ParaBirimleri.DoesNotExist:
+                    if current_kasa_para_birimi_value.isdigit():
+                        try:
+                            pb_id = int(current_kasa_para_birimi_value)
+                            pb = ParaBirimleri.objects.get(id=pb_id)
+                            kasa_instance.currency_display_name = pb.ad
+                            kasa_instance.currency_code_for_balance = pb.kod
+                        except (ParaBirimleri.DoesNotExist, ValueError):
+                            print(f"Warning (kasa_list): Kasa ID {kasa_instance.id} has para_birimi '{current_kasa_para_birimi_value}' not valid code or ID.")
+                    else:
+                        print(f"Warning (kasa_list): Kasa ID {kasa_instance.id} has para_birimi '{current_kasa_para_birimi_value}' not recognized code.")
+                except Exception as e:
+                    print(f"Error (kasa_list) looking up currency for Kasa ID {kasa_instance.id} value '{current_kasa_para_birimi_value}': {e}")
+            else:
+                kasa_instance.currency_display_name = "Belirtilmemiş"
+                kasa_instance.currency_code_for_balance = ""
+
+            toplam_guncel_bakiye_numeric += guncel_bakiye
+            
+            kasa_instance.son_hareketler = GenelKasaHareketi.objects.filter(kasa=kasa_instance).order_by('-tarih')[:3]
+            processed_kasalar.append(kasa_instance)
+
+        toplam_islem_sayisi = GenelKasaHareketi.objects.count()
+        
+        context = {
+            'kasalar': processed_kasalar,
+            'toplam_baslangic_bakiyesi': toplam_baslangic_bakiyesi,
+            'toplam_guncel_bakiye': toplam_guncel_bakiye_numeric,
+            'toplam_islem_sayisi': toplam_islem_sayisi,
+            'today': timezone.now().date()
+        }
+        return render(request, 'sefer_app/kasa_list.html', context)
+    except Exception as e:
+        print(f"FATAL Error in kasa_list view: {e}")
+        traceback.print_exc()
+        messages.error(request, "Kasalar listelenirken bir sunucu hatası oluştu. Lütfen daha sonra tekrar deneyin.")
+        return render(request, 'sefer_app/kasa_list.html', {'kasalar': [], 'error_message': "Kasa listesi yüklenemedi."})
+
+
+def kasa_detail(request, pk):
+    """Display cash register details and transactions."""
+    kasa = get_object_or_404(Kasalar, pk=pk)
+    
+    # Resolve currency name and code for the kasa
+    current_kasa_para_birimi_value = str(kasa.para_birimi) if kasa.para_birimi is not None else ""
+    kasa.currency_display_name = current_kasa_para_birimi_value  # Default
+    kasa.currency_code = current_kasa_para_birimi_value      # Default
+
+    if current_kasa_para_birimi_value:
+        try:
+            pb = ParaBirimleri.objects.get(kod=current_kasa_para_birimi_value)
+            kasa.currency_display_name = pb.ad
+            kasa.currency_code = pb.kod
+        except ParaBirimleri.DoesNotExist:
+            if current_kasa_para_birimi_value.isdigit():
+                try:
+                    pb_id = int(current_kasa_para_birimi_value)
+                    pb = ParaBirimleri.objects.get(id=pb_id)
+                    kasa.currency_display_name = pb.ad
+                    kasa.currency_code = pb.kod
+                except (ParaBirimleri.DoesNotExist, ValueError):
+                    print(f"Warning: Kasa (detail) ID {kasa.id} has para_birimi '{current_kasa_para_birimi_value}' not found as code or ID.")
+            else:
+                print(f"Warning: Kasa (detail) ID {kasa.id} has para_birimi '{current_kasa_para_birimi_value}' not recognized as code.")
+        except Exception as e:
+            print(f"Error looking up currency for Kasa (detail) ID {kasa.id} with value '{current_kasa_para_birimi_value}': {e}")
+    else:
+        kasa.currency_display_name = "Belirtilmemiş"
+        kasa.currency_code = "N/A"
+    
+    # Filter parameters
+    tarih_baslangic = request.GET.get('tarih_baslangic', '')
+    tarih_bitis = request.GET.get('tarih_bitis', '')
+    hareket_tipi = request.GET.get('hareket_tipi', '')
+    arama = request.GET.get('arama', '')
+    
+    # Base queryset for different transaction types
+    genel_hareketler = GenelKasaHareketi.objects.filter(kasa=kasa).order_by('-tarih')
+    fatura_odemeleri = FaturaOdeme.objects.filter(Kasa=kasa).order_by('-OdemeTarihi')
+    sefer_masraflar = SeferMasraf.objects.filter(Kasa=kasa).order_by('-Tarih')
+    
+    # Apply filters to general transactions
+    if tarih_baslangic:
+        genel_hareketler = genel_hareketler.filter(tarih__gte=tarih_baslangic)
+        fatura_odemeleri = fatura_odemeleri.filter(OdemeTarihi__gte=tarih_baslangic)
+        sefer_masraflar = sefer_masraflar.filter(Tarih__gte=tarih_baslangic)
+    
+    if tarih_bitis:
+        genel_hareketler = genel_hareketler.filter(tarih__lte=tarih_bitis)
+        fatura_odemeleri = fatura_odemeleri.filter(OdemeTarihi__lte=tarih_bitis)
+        sefer_masraflar = sefer_masraflar.filter(Tarih__lte=tarih_bitis)
+    
+    if hareket_tipi:
+        if hareket_tipi == 'Gelir':
+            genel_hareketler = genel_hareketler.filter(hareket_tipi='Gelir')
+            sefer_masraflar = SeferMasraf.objects.none()
+        elif hareket_tipi == 'Gider':
+            genel_hareketler = genel_hareketler.filter(hareket_tipi='Gider')
+            fatura_odemeleri = FaturaOdeme.objects.none()
+    
+    if arama:
+        genel_hareketler = genel_hareketler.filter(
+            Q(aciklama__icontains=arama) | 
+            Q(belge_no__icontains=arama) |
+            Q(kategori__icontains=arama)
+        )
+    
+    # Calculate statistics
+    genel_gelir_sum = genel_hareketler.filter(hareket_tipi='Gelir').aggregate(
+        toplam=Coalesce(Sum('tutar'), Value(Decimal('0.00'), output_field=DecimalField()))
+    )['toplam']
+    
+    genel_gider_sum = genel_hareketler.filter(hareket_tipi='Gider').aggregate(
+        toplam=Coalesce(Sum('tutar'), Value(Decimal('0.00'), output_field=DecimalField()))
+    )['toplam']
+    
+    baslangic_bakiyesi = kasa.baslangic_bakiyesi
+    
+    fatura_odeme_toplam = fatura_odemeleri.aggregate(
+        toplam=Coalesce(Sum('Tutar'), Value(Decimal('0.00'), output_field=DecimalField()))
+    )['toplam']
+    
+    sefer_masraf_toplam = sefer_masraflar.aggregate(
+        toplam=Coalesce(Sum('TutarEUR'), Value(Decimal('0.00'), output_field=DecimalField()))
+    )['toplam']
+    
+    guncel_bakiye = baslangic_bakiyesi + genel_gelir_sum - genel_gider_sum + fatura_odeme_toplam - sefer_masraf_toplam
+    toplam_gelir_genel = genel_gelir_sum + fatura_odeme_toplam
+    toplam_gider_genel = genel_gider_sum + sefer_masraf_toplam
+    
+    all_transactions = []
+    for hareket in genel_hareketler:
+        all_transactions.append({
+            'id': hareket.id, 'tarih': hareket.tarih, 'aciklama': hareket.aciklama,
+            'hareket_tipi': hareket.hareket_tipi, 'tutar': hareket.tutar,
+            'belge_no': hareket.belge_no, 'kaynak': 'Genel Hareket', 'link': None
+        })
+    for odeme in fatura_odemeleri:
+        fatura_info = ""
+        fatura_link = None
+        transaction_type = "Fatura Ödemesi"  # Default for 'Alış' (Purchase) invoices
+        
+        if odeme.Fatura:
+            fatura_link = f"/faturalar/{odeme.Fatura.id}/"
+            
+            # Use different description based on invoice type
+            if odeme.Fatura.FaturaTipi in ['Satış', 'Nakliye']:
+                transaction_type = "Fatura Tahsilatı"
+                
+            if odeme.Fatura.Sefer:
+                fatura_info = f"Sefer: {odeme.Fatura.Sefer.sefer_kodu}"
+        
+        all_transactions.append({
+            'id': odeme.id, 'tarih': odeme.OdemeTarihi,
+            'aciklama': f"{transaction_type} - {fatura_info}".strip(" - "),
+            'hareket_tipi': 'Gelir', 'tutar': odeme.Tutar,
+            'belge_no': odeme.Fatura.FaturaNo if odeme.Fatura else '',
+            'kaynak': 'Fatura Ödeme', 'link': fatura_link
+        })
+    for masraf in sefer_masraflar:
+        sefer_info = ""
+        sefer_link = None
+        route_info = ""
+        
+        if masraf.Sefer:
+            # Get trip code to use as document number
+            sefer_link = f"/seferler/{masraf.Sefer.id}/"
+            
+            # Create route information using country codes (e.g., TR-RO)
+            if hasattr(masraf.Sefer, 'baslangic_ulkesi') and hasattr(masraf.Sefer, 'bitis_ulkesi'):
+                route_info = f"{masraf.Sefer.baslangic_ulkesi.ulke_kodu}-{masraf.Sefer.bitis_ulkesi.ulke_kodu}"
+            
+            # Use route info in the description instead of trip code
+            sefer_info = f"{route_info}"
+        
+        # Format the expense amount to show original currency with symbols
+        kasa_symbol = CURRENCY_SYMBOLS.get(kasa.para_birimi, kasa.para_birimi)
+        amount_display = f"{masraf.TutarEUR:.2f} {kasa_symbol}"
+        
+        if masraf.ParaBirimi != kasa.para_birimi:
+            original_symbol = CURRENCY_SYMBOLS.get(masraf.ParaBirimi, masraf.ParaBirimi)
+            amount_display = f"{masraf.TutarEUR:.2f} {kasa_symbol} <small class='text-muted'>[{masraf.Tutar:.2f} {original_symbol}]</small>"
+        
+        all_transactions.append({
+            'id': masraf.id, 'tarih': masraf.Tarih,
+            'aciklama': f"{masraf.MasrafTipi} - {sefer_info}".strip(" - "),
+            'hareket_tipi': 'Gider', 'tutar': masraf.TutarEUR,
+            'tutar_display': amount_display, 
+            'belge_no': masraf.Sefer.sefer_kodu if masraf.Sefer else masraf.BelgeNo,
+            'kaynak': 'Sefer Masrafı', 'link': sefer_link
+        })
+    
+    all_transactions.sort(key=lambda x: x['tarih'], reverse=True)
+    chronological_transactions = sorted(all_transactions, key=lambda x: x['tarih'])
+    
+    running_balance = baslangic_bakiyesi
+    for transaction in chronological_transactions:
+        if transaction['hareket_tipi'] == 'Gelir':
+            running_balance += transaction['tutar']
+        else:
+            running_balance -= transaction['tutar']
+        transaction['bakiye'] = running_balance
+    
+    all_transactions = sorted(chronological_transactions, key=lambda x: x['tarih'], reverse=True)
+    
+    page = request.GET.get('page', 1)
+    paginator = Paginator(all_transactions, 25)
+    try:
+        hareketler = paginator.page(page)
+    except PageNotAnInteger:
+        hareketler = paginator.page(1)
+    except EmptyPage:
+        hareketler = paginator.page(paginator.num_pages)
+    
+    context = {
+        'kasa': kasa, # kasa object now has .currency_display_name and .currency_code
+        'hareketler': hareketler,
+        'toplam_gelir': toplam_gelir_genel,
+        'toplam_gider': toplam_gider_genel,
+        'baslangic_bakiyesi': baslangic_bakiyesi,
+        'guncel_bakiye': guncel_bakiye,
+        'tarih_baslangic': tarih_baslangic,
+        'tarih_bitis': tarih_bitis,
+        'hareket_tipi': hareket_tipi,
+        'arama': arama,
+        'today': timezone.now().date(),
+        'has_hareketler': bool(all_transactions)
+    }
+    return render(request, 'sefer_app/kasa_detail.html', context)
+
+
+def kasa_detail_pdf(request, pk):
+    """Generate PDF report of cash register transactions."""
+    kasa = get_object_or_404(Kasalar, pk=pk)
+    
+    # Filter parameters - reuse the same filters from the kasa_detail view
+    tarih_baslangic = request.GET.get('tarih_baslangic', '')
+    tarih_bitis = request.GET.get('tarih_bitis', '')
+    hareket_tipi = request.GET.get('hareket_tipi', '')
+    
+    # Base queryset for different transaction types
+    genel_hareketler = GenelKasaHareketi.objects.filter(kasa=kasa).order_by('-tarih')
+    fatura_odemeleri = FaturaOdeme.objects.filter(Kasa=kasa).order_by('-OdemeTarihi')
+    sefer_masraflar = SeferMasraf.objects.filter(Kasa=kasa).order_by('-Tarih')
+    
+    # Apply filters
+    if tarih_baslangic:
+        genel_hareketler = genel_hareketler.filter(tarih__gte=tarih_baslangic)
+        fatura_odemeleri = fatura_odemeleri.filter(OdemeTarihi__gte=tarih_baslangic)
+        sefer_masraflar = sefer_masraflar.filter(Tarih__gte=tarih_baslangic)
+    
+    if tarih_bitis:
+        genel_hareketler = genel_hareketler.filter(tarih__lte=tarih_bitis)
+        fatura_odemeleri = fatura_odemeleri.filter(OdemeTarihi__lte=tarih_bitis)
+        sefer_masraflar = sefer_masraflar.filter(Tarih__lte=tarih_bitis)
+    
+    if hareket_tipi:
+        if hareket_tipi == 'Gelir':
+            genel_hareketler = genel_hareketler.filter(hareket_tipi='Gelir')
+            sefer_masraflar = SeferMasraf.objects.none()
+        elif hareket_tipi == 'Gider':
+            genel_hareketler = genel_hareketler.filter(hareket_tipi='Gider')
+            fatura_odemeleri = FaturaOdeme.objects.none()
+    
+    # Calculate statistics
+    genel_gelir = genel_hareketler.filter(hareket_tipi='Gelir').aggregate(
+        toplam=Sum('tutar', default=0)
+    )['toplam'] or Decimal('0.00')
+    
+    genel_gider = genel_hareketler.filter(hareket_tipi='Gider').aggregate(
+        toplam=Sum('tutar', default=0)
+    )['toplam'] or Decimal('0.00')
+    
+    # Calculate from initial balance
+    baslangic_bakiyesi = kasa.baslangic_bakiyesi
+    
+    # Calculate total income from invoice payments (add to balance)
+    fatura_odeme_toplam = fatura_odemeleri.aggregate(
+        toplam=Sum('Tutar', default=0)
+    )['toplam'] or Decimal('0.00')
+    
+    # Calculate total expenses from trip expenses (subtract from balance)
+    sefer_masraf_toplam = sefer_masraflar.aggregate(
+        toplam=Sum('TutarEUR', default=0)
+    )['toplam'] or Decimal('0.00')
+    
+    # Calculate net current balance
+    guncel_bakiye = baslangic_bakiyesi + genel_gelir - genel_gider + fatura_odeme_toplam - sefer_masraf_toplam
+    
+    # Calculate total income (general income + invoice payments)
+    toplam_gelir = genel_gelir + fatura_odeme_toplam
+    
+    # Calculate total expenses (general expenses + trip expenses)
+    toplam_gider = genel_gider + sefer_masraf_toplam
+    
+    # Prepare a combined list of all transactions with consistent field names
+    all_transactions = []
+    
+    # Add general transactions
+    for hareket in genel_hareketler:
+        all_transactions.append({
+            'id': hareket.id,
+            'tarih': hareket.tarih,  # This includes both date & time
+            'aciklama': hareket.aciklama,
+            'hareket_tipi': hareket.hareket_tipi,
+            'tutar': hareket.tutar,
+            'belge_no': hareket.belge_no,
+            'kaynak': 'Genel Hareket',
+            'link': None  # General transactions don't have detail pages
+        })
+    
+    # Add invoice payments
+    for odeme in fatura_odemeleri:
+        fatura_info = ""
+        fatura_link = None
+        transaction_type = "Fatura Ödemesi"  # Default for 'Alış' (Purchase) invoices
+        
+        if odeme.Fatura:
+            fatura_link = f"/faturalar/{odeme.Fatura.id}/"
+            
+            # Use different description based on invoice type
+            if odeme.Fatura.FaturaTipi in ['Satış', 'Nakliye']:
+                transaction_type = "Fatura Tahsilatı"
+                
+            if odeme.Fatura.Sefer:
+                fatura_info = f"Sefer: {odeme.Fatura.Sefer.sefer_kodu}"
+        
+        all_transactions.append({
+            'id': odeme.id,
+            'tarih': odeme.OdemeTarihi,  # Ensure this has time component if available
+            'aciklama': f"{transaction_type} - {fatura_info}".strip(" - "),
+            'hareket_tipi': 'Gelir',  # They are receipts from the cash register's perspective
+            'tutar': odeme.Tutar,
+            'belge_no': odeme.Fatura.FaturaNo if odeme.Fatura else '',
+            'kaynak': 'Fatura Ödeme',
+            'link': fatura_link
+        })
+    
+    # Add trip expenses
+    for masraf in sefer_masraflar:
+        sefer_info = ""
+        sefer_link = None
+        route_info = ""
+        
+        if masraf.Sefer:
+            # Get trip code to use as document number
+            sefer_link = f"/seferler/{masraf.Sefer.id}/"
+            
+            # Create route information using country codes (e.g., TR-RO)
+            if hasattr(masraf.Sefer, 'baslangic_ulkesi') and hasattr(masraf.Sefer, 'bitis_ulkesi'):
+                route_info = f"{masraf.Sefer.baslangic_ulkesi.ulke_kodu}-{masraf.Sefer.bitis_ulkesi.ulke_kodu}"
+            
+            # Use route info in the description instead of trip code
+            sefer_info = f"{route_info}"
+        
+        # Format the expense amount to show original currency with symbols
+        kasa_symbol = CURRENCY_SYMBOLS.get(kasa.para_birimi, kasa.para_birimi)
+        amount_display = f"{masraf.TutarEUR:.2f} {kasa_symbol}"
+        
+        if masraf.ParaBirimi != kasa.para_birimi:
+            original_symbol = CURRENCY_SYMBOLS.get(masraf.ParaBirimi, masraf.ParaBirimi)
+            amount_display = f"{masraf.TutarEUR:.2f} {kasa_symbol} [{masraf.Tutar:.2f} {original_symbol}]"
+        
+        all_transactions.append({
+            'id': masraf.id,
+            'tarih': masraf.Tarih,
+            'aciklama': f"{masraf.MasrafTipi} - {sefer_info}".strip(" - "),
+            'hareket_tipi': 'Gider',  # They are expenses from the cash register's perspective
+            'tutar': masraf.TutarEUR,  # Use EUR amount for calculations
+            'tutar_display': amount_display,  # Display original currency amount
+            'belge_no': masraf.Sefer.sefer_kodu if masraf.Sefer else masraf.BelgeNo,
+            'kaynak': 'Sefer Masrafı',
+            'link': sefer_link
+        })
+    
+    # Sort all transactions by date (newest first)
+    all_transactions.sort(key=lambda x: x['tarih'], reverse=True)
+    
+    # Create a copy of transactions for processing in chronological order
+    chronological_transactions = sorted(all_transactions, key=lambda x: x['tarih'])
+    
+    # Process transactions chronologically to calculate running balance
+    running_balance = baslangic_bakiyesi
+    for transaction in chronological_transactions:
+        if transaction['hareket_tipi'] == 'Gelir':
+            running_balance += transaction['tutar']
+        else:  # 'Gider'
+            running_balance -= transaction['tutar']
+        transaction['bakiye'] = running_balance
+    
+    # Sort transactions back to reverse chronological order (newest first)
+    all_transactions = sorted(chronological_transactions, key=lambda x: x['tarih'], reverse=True)
+    
+    # Create PDF document
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{kasa.kasa_adi}_rapor.pdf"'
+    
+    # Register a TTF font for Turkish characters
+    pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
+    
+    # Create document
+    doc = SimpleDocTemplate(
+        response,
+        pagesize=A4,
+        leftMargin=1*cm,
+        rightMargin=1*cm,
+        topMargin=1*cm,
+        bottomMargin=1*cm
+    )
+    
+    # Define styles
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        name='Turkish',
+        fontName='DejaVuSans',
+        fontSize=10,
+    ))
+    
+    # Create content elements
+    elements = []
+    
+    # Title
+    title_style = styles['Heading1']
+    title_style.alignment = 1  # Center alignment
+    elements.append(Paragraph(f"{kasa.kasa_adi} - Kasa Raporu", title_style))
+    
+    # Date range info
+    if tarih_baslangic and tarih_bitis:
+        date_info = f"Dönem: {tarih_baslangic} - {tarih_bitis}"
+    else:
+        date_info = "Tüm Dönemler"
+    
+    elements.append(Paragraph(date_info, styles['Normal']))
+    elements.append(Paragraph(f"Rapor Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Summary table
+    summary_data = [
+        ["Özet Bilgiler", ""],
+        ["Başlangıç Bakiye:", f"{baslangic_bakiyesi} {kasa.para_birimi}"],
+        ["Toplam Gelir:", f"{toplam_gelir} {kasa.para_birimi}"],
+        ["Toplam Gider:", f"{toplam_gider} {kasa.para_birimi}"],
+        ["Net Nakit Akışı:", f"{toplam_gelir - toplam_gider} {kasa.para_birimi}"],
+        ["Güncel Bakiye:", f"{guncel_bakiye} {kasa.para_birimi}"],
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[4*cm, 4*cm])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (1, 0), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Transaction detail table
+    elements.append(Paragraph("Hareket Listesi", styles['Heading2']))
+    elements.append(Spacer(1, 0.3*cm))
+    
+    # Define table headers
+    transaction_data = [["Tarih", "Belge No", "Açıklama", "Kaynak", "Giriş", "Çıkış", "Bakiye"]]
+    
+    # Add transaction data to table
+    for hareket in all_transactions:
+        gelir = ""
+        gider = ""
+        
+        if hareket['hareket_tipi'] == 'Gelir':
+            gelir = f"{hareket['tutar']} {kasa.para_birimi}"
+        else:
+            gider = f"{hareket['tutar']} {kasa.para_birimi}"
+        
+        tarih_str = hareket['tarih'].strftime("%d.%m.%Y")
+        
+        transaction_data.append([
+            tarih_str,
+            hareket['belge_no'] or "-",
+            hareket['aciklama'],
+            hareket['kaynak'],
+            gelir,
+            gider,
+            f"{hareket['bakiye']} {kasa.para_birimi}"
+        ])
+    
+    # Create table with auto-calculated widths
+    col_widths = [2*cm, 2.5*cm, 6*cm, 2.5*cm, 2*cm, 2*cm, 2.5*cm]
+    transaction_table = Table(transaction_data, colWidths=col_widths, repeatRows=1)
+    
+    # Set table style
+    transaction_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ALIGN', (4, 1), (6, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+    ]))
+    
+    elements.append(transaction_table)
+    
+    # Add footer
+    elements.append(Spacer(1, 1*cm))
+    elements.append(Paragraph(f"© {datetime.now().year} NextSefer - Kasa Raporu", styles['Normal']))
+    
+    # Build the PDF
+    doc.build(elements)
+    
+    return response
+
+
+def kasa_create(request):
+    """Create a new cash register."""
+    para_birimleri = ParaBirimleri.objects.all().order_by('kod')
+    kasa_tipi_choices = Kasalar.KASA_TIPI_CHOICES
+    
+    if request.method == 'POST':
+        try:
+            kasa_adi = request.POST.get('kasa_adi')
+            kasa_tipi = request.POST.get('kasa_tipi')
+            para_birimi = request.POST.get('para_birimi')
+            baslangic_bakiyesi = safe_decimal(request.POST.get('baslangic_bakiyesi', '0'))
+            aciklama = request.POST.get('aciklama', '')
+            
+            # Basic validation
+            if not kasa_adi:
+                raise ValueError("Kasa adı boş olamaz")
+            
+            # Create the cash register
+            kasa = Kasalar(
+                kasa_adi=kasa_adi,
+                kasa_tipi=kasa_tipi,
+                para_birimi=para_birimi,
+                baslangic_bakiyesi=baslangic_bakiyesi,
+                aciklama=aciklama
+            )
+            kasa.save()
+                
+            messages.success(request, f"'{kasa_adi}' kasası başarıyla oluşturuldu.")
+            return redirect('kasa_detail', pk=kasa.pk)
+            
+        except ValueError as e:
+            messages.error(request, str(e))
+        except Exception as e:
+            messages.error(request, f"Kasa oluşturulurken bir hata oluştu: {str(e)}")
+    
+    context = {
+        'para_birimleri': para_birimleri,
+        'kasa_tipi_choices': kasa_tipi_choices,
+    }
+    return render(request, 'sefer_app/kasa_form.html', context)
+
+
+def kasa_update(request, pk):
+    """Update an existing cash register."""
+    kasa = get_object_or_404(Kasalar, pk=pk)
+    para_birimleri = ParaBirimleri.objects.all().order_by('kod')
+    kasa_tipi_choices = Kasalar.KASA_TIPI_CHOICES
+    
+    if request.method == 'POST':
+        try:
+            kasa.kasa_adi = request.POST.get('kasa_adi')
+            kasa.kasa_tipi = request.POST.get('kasa_tipi')
+            kasa.para_birimi = request.POST.get('para_birimi')
+            kasa.baslangic_bakiyesi = safe_decimal(request.POST.get('baslangic_bakiyesi', '0'))
+            kasa.aciklama = request.POST.get('aciklama', '')
+            
+            # Basic validation
+            if not kasa.kasa_adi:
+                raise ValueError("Kasa adı boş olamaz")
+            
+            # Save the updated cash register
+            kasa.save()
+            
+            messages.success(request, f"'{kasa.kasa_adi}' kasası başarıyla güncellendi.")
+            return redirect('kasa_detail', pk=kasa.pk)
+            
+        except ValueError as e:
+            messages.error(request, str(e))
+        except Exception as e:
+            messages.error(request, f"Kasa güncellenirken bir hata oluştu: {str(e)}")
+    
+    context = {
+        'kasa': kasa,
+        'para_birimleri': para_birimleri,
+        'kasa_tipi_choices': kasa_tipi_choices,
+    }
+    return render(request, 'sefer_app/kasa_form.html', context)
+
+
+def kasa_delete(request, pk):
+    """Delete a cash register."""
+    kasa = get_object_or_404(Kasalar, pk=pk)
+    
+    # Count related transactions
+    hareket_sayisi = GenelKasaHareketi.objects.filter(kasa=kasa).count()
+    
+    # Calculate current balance
+    genel_gelir = GenelKasaHareketi.objects.filter(kasa=kasa, hareket_tipi='Gelir').aggregate(
+        toplam=Coalesce(Sum('tutar'), Value(0, output_field=DecimalField()))
+    )['toplam'] or 0
+    
+    genel_gider = GenelKasaHareketi.objects.filter(kasa=kasa, hareket_tipi='Gider').aggregate(
+        toplam=Coalesce(Sum('tutar'), Value(0, output_field=DecimalField()))
+    )['toplam'] or 0
+    
+    fatura_odeme = FaturaOdeme.objects.filter(Kasa=kasa).aggregate(
+        toplam=Coalesce(Sum('Tutar'), Value(0, output_field=DecimalField()))
+    )['toplam'] or 0
+    
+    sefer_masraf = SeferMasraf.objects.filter(Kasa=kasa).aggregate(
+        toplam=Coalesce(Sum('TutarEUR'), Value(0, output_field=DecimalField()))
+    )['toplam'] or 0
+    
+    guncel_bakiye = kasa.baslangic_bakiyesi + genel_gelir - genel_gider + fatura_odeme - sefer_masraf
+    
+    if request.method == 'POST':
+        try:
+            # Check if there are related transactions
+            if hareket_sayisi > 0:
+                messages.error(
+                    request,
+                    f"Bu kasada {hareket_sayisi} hareket kaydı bulunduğu için silinemez."
+                )
+                return redirect('kasa_detail', pk=pk)
+            
+            kasa_adi = kasa.kasa_adi
+            kasa.delete()
+            messages.success(request, f"'{kasa_adi}' kasası başarıyla silindi.")
+            return redirect('kasa_list')
+            
+        except Exception as e:
+            messages.error(request, f'Kasa silme hatası: {str(e)}')
+            return redirect('kasa_detail', pk=pk)
+    
+    context = {
+        'kasa': kasa,
+        'hareket_sayisi': hareket_sayisi,
+        'guncel_bakiye': guncel_bakiye,
+        'today': timezone.now().date()
+    }
+    return render(request, 'sefer_app/kasa_confirm_delete.html', context)
+
+
+def kasa_transfer_create(request):
+    kasalar_query = Kasalar.objects.all().order_by('kasa_adi')
+    para_birimleri_all = ParaBirimleri.objects.filter(aktif=True)
+
+    kasalar_list_for_template = []
+    for kasa_obj in kasalar_query:
+        kasa_obj.resolved_currency_code = _resolve_currency_iso_code(kasa_obj.para_birimi)
+        kasalar_list_for_template.append(kasa_obj)
+    
+    form_data_on_error = {}
+    if request.method == 'POST':
+        try:
+            kaynak_kasa_id = request.POST.get('kaynak_kasa')
+            hedef_kasa_id = request.POST.get('hedef_kasa')
+            tutar_str = request.POST.get('tutar', '0')
+            tarih_str = request.POST.get('tarih', timezone.now().strftime('%Y-%m-%d %H:%M:%S'))
+            aciklama = request.POST.get('aciklama', '')
+
+            form_data_on_error = {
+                'kaynak_kasa_form_id': kaynak_kasa_id,
+                'hedef_kasa_form_id': hedef_kasa_id,
+                'tutar_form': tutar_str,
+                'aciklama_form': aciklama,
+                'tarih_form': tarih_str
+            }
+            tutar = safe_decimal(tutar_str)
+            
+            if not kaynak_kasa_id or not hedef_kasa_id:
+                messages.error(request, 'Kaynak ve hedef kasa seçimi zorunludur.')
+                context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+                return render(request, 'sefer_app/kasa_transfer_form.html', context)
+            if kaynak_kasa_id == hedef_kasa_id:
+                messages.error(request, 'Kaynak ve hedef kasa aynı olamaz.')
+                context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+                return render(request, 'sefer_app/kasa_transfer_form.html', context)
+            if tutar <= 0:
+                messages.error(request, 'Transfer tutarı pozitif olmalıdır.')
+                context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+                return render(request, 'sefer_app/kasa_transfer_form.html', context)
+            
+            kaynak_kasa = Kasalar.objects.get(id=kaynak_kasa_id)
+            hedef_kasa = Kasalar.objects.get(id=hedef_kasa_id)
+            
+            try:
+                tarih = datetime.strptime(tarih_str, '%Y-%m-%d %H:%M:%S')
+                if timezone.is_naive(tarih): tarih = timezone.make_aware(tarih, timezone.get_current_timezone())
+            except ValueError:
+                try: 
+                    tarih_dt_obj = datetime.strptime(tarih_str, '%Y-%m-%d').date()
+                    tarih = datetime.combine(tarih_dt_obj, datetime.min.time())
+                    if timezone.is_naive(tarih): tarih = timezone.make_aware(tarih, timezone.get_current_timezone())
+                except ValueError:
+                    messages.error(request, "Geçersiz tarih formatı.")
+                    context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+                    return render(request, 'sefer_app/kasa_transfer_form.html', context)
+
+            kur = Decimal('1.0')
+            hedef_tutar = tutar
+
+            kaynak_kasa_currency_code = _resolve_currency_iso_code(kaynak_kasa.para_birimi)
+            hedef_kasa_currency_code = _resolve_currency_iso_code(hedef_kasa.para_birimi)
+
+            if kaynak_kasa_currency_code == "XXX" or hedef_kasa_currency_code == "XXX":
+                messages.error(request, "Kaynak veya hedef kasanın para birimi kodu anlaşılamadı.")
+                context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+                return render(request, 'sefer_app/kasa_transfer_form.html', context)
+
+            if kaynak_kasa_currency_code != hedef_kasa_currency_code:
+                fetched_kur = get_exchange_rate(kaynak_kasa_currency_code, hedef_kasa_currency_code)
+                if fetched_kur is None:
+                    messages.error(request, f"{kaynak_kasa_currency_code} -> {hedef_kasa_currency_code} için kur bilgisi alınamadı. Lütfen API bağlantısını kontrol edin veya daha sonra tekrar deneyin.")
+                    context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+                    return render(request, 'sefer_app/kasa_transfer_form.html', context)
+                kur = fetched_kur
+                hedef_tutar = tutar * kur
+            
+            kaynak_gelir = GenelKasaHareketi.objects.filter(kasa=kaynak_kasa, hareket_tipi='Gelir').aggregate(toplam=Coalesce(Sum('tutar'), Decimal(0)))['toplam']
+            kaynak_gider = GenelKasaHareketi.objects.filter(kasa=kaynak_kasa, hareket_tipi='Gider').aggregate(toplam=Coalesce(Sum('tutar'), Decimal(0)))['toplam']
+            kaynak_fatura_odeme_gelir = FaturaOdeme.objects.filter(Kasa=kaynak_kasa, Fatura__FaturaTipi__in=['Satış', 'Nakliye']).aggregate(toplam=Coalesce(Sum('Tutar'), Decimal(0)))['toplam']
+            kaynak_fatura_odeme_gider = FaturaOdeme.objects.filter(Kasa=kaynak_kasa, Fatura__FaturaTipi='Alış').aggregate(toplam=Coalesce(Sum('Tutar'), Decimal(0)))['toplam']
+            kaynak_sefer_masraf = SeferMasraf.objects.filter(Kasa=kaynak_kasa).aggregate(toplam=Coalesce(Sum('TutarEUR'), Decimal(0)))['toplam']
+            kaynak_bakiye = (kaynak_kasa.baslangic_bakiyesi + kaynak_gelir + kaynak_fatura_odeme_gelir - kaynak_gider - kaynak_fatura_odeme_gider - kaynak_sefer_masraf)
+
+            if kaynak_bakiye < tutar:
+                messages.error(request, f"Yetersiz bakiye! {kaynak_kasa.kasa_adi} kasasında {kaynak_bakiye:.2f} {kaynak_kasa_currency_code} var, transfer tutarı {tutar:.2f} {kaynak_kasa_currency_code}.")
+                context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+                return render(request, 'sefer_app/kasa_transfer_form.html', context)
+
+            transfer = KasaTransfer.objects.create(
+                kaynak_kasa=kaynak_kasa,
+                hedef_kasa=hedef_kasa,
+                tutar=tutar,
+                tarih=tarih,
+                aciklama=aciklama,
+                kur=kur 
+            )
+            
+            gkh_kaynak = GenelKasaHareketi.objects.create(
+                kasa=kaynak_kasa,
+                hareket_tipi='Gider',
+                kategori='Kasa Transferi (Çıkış)',
+                tutar=tutar,
+                tarih=tarih,
+                belge_no=f"TRF-{transfer.id}",
+                aciklama=f"Transfer -> {hedef_kasa.kasa_adi} ({hedef_kasa_currency_code}). {aciklama}"
+            )
+            
+            gkh_hedef = GenelKasaHareketi.objects.create(
+                kasa=hedef_kasa,
+                hareket_tipi='Gelir',
+                kategori='Kasa Transferi (Giriş)',
+                tutar=hedef_tutar.quantize(Decimal('0.01')), 
+                tarih=tarih,
+                belge_no=f"TRF-{transfer.id}",
+                aciklama=f"Transfer <- {kaynak_kasa.kasa_adi} ({kaynak_kasa_currency_code}). {aciklama}"
+            )
+            
+            if kaynak_kasa_currency_code == hedef_kasa_currency_code:
+                success_msg = f"{tutar:.2f} {kaynak_kasa_currency_code} başarıyla {kaynak_kasa.kasa_adi} kasasından {hedef_kasa.kasa_adi} kasasına transfer edildi."
+            else:
+                success_msg = f"{tutar:.2f} {kaynak_kasa_currency_code} başarıyla {kaynak_kasa.kasa_adi} kasasından {hedef_tutar:.2f} {hedef_kasa_currency_code} olarak {hedef_kasa.kasa_adi} kasasına transfer edildi. (Kur: {kur:.4f})"
+            
+            messages.success(request, success_msg)
+            return redirect('kasa_list')
+            
+        except Kasalar.DoesNotExist:
+            messages.error(request, "Seçilen kasa veya kasalar bulunamadı.")
+            context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+            return render(request, 'sefer_app/kasa_transfer_form.html', context)
+        except Exception as e:
+            messages.error(request, f'Transfer sırasında beklenmedik bir hata oluştu: {str(e)}')
+            context = {'kasalar': kasalar_list_for_template, 'para_birimleri': para_birimleri_all, 'today': timezone.now().date(), **form_data_on_error}
+            return render(request, 'sefer_app/kasa_transfer_form.html', context)
+    else: # GET request
+    context = {
+            'kasalar': kasalar_list_for_template, 
+            'para_birimleri': para_birimleri_all, 
+        'today': timezone.now().date()
+    }
+    return render(request, 'sefer_app/kasa_transfer_form.html', context)
+
+
+def genel_hareket_create(request):
+    """Create a general transaction for a cash register."""
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    print("genel_hareket_create called")
+    
+    if request.method == 'POST':
+        try:
+            print("Processing POST data:", request.POST)
+            kasa_id = request.POST.get('kasa')
+            hareket_tipi = request.POST.get('hareket_tipi')
+            kategori = request.POST.get('kategori', '')
+            tutar_raw = request.POST.get('tutar', '0')
+            print(f"Received tutar_raw: {tutar_raw}")
+            tutar = safe_decimal(tutar_raw)
+            print(f"Converted tutar: {tutar}")
+            tarih = request.POST.get('tarih')
+            belge_no = request.POST.get('belge_no', '')
+            aciklama = request.POST.get('aciklama', '')
+            
+            if not kasa_id or not hareket_tipi:
+                messages.error(request, 'Kasa ve hareket tipi seçimi zorunludur.')
+                print("Error: Kasa or hareket_tipi missing")
+                return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar})
+                
+            if tutar <= 0:
+                messages.error(request, 'Tutar pozitif olmalıdır.')
+                print(f"Error: Tutar is not positive: {tutar}")
+                return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar})
+            
+            # Get cash register
+            kasa = Kasalar.objects.get(id=kasa_id)
+            print(f"Found kasa: {kasa.kasa_adi}")
+            
+            # Calculate current balance for this register
+            gelir = GenelKasaHareketi.objects.filter(kasa=kasa, hareket_tipi='Gelir').aggregate(toplam=Sum('tutar'))['toplam'] or 0
+            gider = GenelKasaHareketi.objects.filter(kasa=kasa, hareket_tipi='Gider').aggregate(toplam=Sum('tutar'))['toplam'] or 0
+            fatura = FaturaOdeme.objects.filter(Kasa=kasa).aggregate(toplam=Sum('Tutar'))['toplam'] or 0
+            masraf = SeferMasraf.objects.filter(Kasa=kasa).aggregate(toplam=Sum('TutarEUR'))['toplam'] or 0
+            
+            guncel_bakiye = kasa.baslangic_bakiyesi + gelir - gider + fatura - masraf
+            print(f"Current balance: {guncel_bakiye}")
+            
+            # Check if cash register has enough balance for expense
+            if hareket_tipi == 'Gider' and guncel_bakiye < tutar:
+                messages.error(
+                    request, 
+                    f"Yetersiz bakiye! {kasa.kasa_adi} kasasında {guncel_bakiye} {kasa.para_birimi} var."
+                )
+                print("Error: Insufficient balance")
+                return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar})
+            
+            # Create transaction
+            hareket = GenelKasaHareketi.objects.create(
+                kasa=kasa,
+                hareket_tipi=hareket_tipi,
+                kategori=kategori,
+                tutar=tutar,
+                tarih=tarih or timezone.now(),
+                belge_no=belge_no,
+                aciklama=aciklama
+            )
+            print(f"Created transaction: {hareket.id}")
+            
+            messages.success(
+                request, 
+                f"{tutar} {kasa.para_birimi} tutarında {hareket_tipi.lower()} kaydı başarıyla oluşturuldu."
+            )
+            return redirect('kasa_detail', pk=kasa.id)
+            
+        except Exception as e:
+            messages.error(request, f'İşlem hatası: {str(e)}')
+            print(f"Exception occurred: {str(e)}")
+            traceback.print_exc()
+    
+    context = {
+        'kasalar': kasalar, 
+        'today': timezone.now().date()
+    }
+    return render(request, 'sefer_app/genel_hareket_form.html', context)
+
+
+def genel_hareket_update(request, pk):
+    """Update an existing general transaction."""
+    hareket = get_object_or_404(GenelKasaHareketi, pk=pk)
+    kasalar = Kasalar.objects.all().order_by('kasa_adi')
+    
+    if request.method == 'POST':
+        try:
+            kasa_id = request.POST.get('kasa')
+            hareket_tipi = request.POST.get('hareket_tipi')
+            kategori = request.POST.get('kategori', '')
+            tutar = safe_decimal(request.POST.get('tutar', '0'))
+            tarih = request.POST.get('tarih')
+            belge_no = request.POST.get('belge_no', '')
+            aciklama = request.POST.get('aciklama', '')
+            
+            if not kasa_id or not hareket_tipi:
+                messages.error(request, 'Kasa ve hareket tipi seçimi zorunludur.')
+                return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar, 'hareket': hareket})
+                
+            if tutar <= 0:
+                messages.error(request, 'Tutar pozitif olmalıdır.')
+                return render(request, 'sefer_app/genel_hareket_form.html', {'kasalar': kasalar, 'hareket': hareket})
+            
+            # Get cash register
+            kasa = Kasalar.objects.get(id=kasa_id)
+            
+            # Update transaction
+            hareket.kasa = kasa
+            hareket.hareket_tipi = hareket_tipi
+            hareket.kategori = kategori
+            hareket.tutar = tutar
+            hareket.tarih = tarih or timezone.now()
+            hareket.belge_no = belge_no
+            hareket.aciklama = aciklama
+            hareket.save()
+            
+            messages.success(
+                request, 
+                f"Kasa hareketi başarıyla güncellendi."
+            )
+            return redirect('kasa_detail', pk=kasa.id)
+            
+        except Exception as e:
+            messages.error(request, f'İşlem hatası: {str(e)}')
+    
+    context = {
+        'kasalar': kasalar,
+        'hareket': hareket,
+        'today': timezone.now().date()
+    }
+    return render(request, 'sefer_app/genel_hareket_form.html', context)
+
+
+def genel_hareket_delete(request, pk):
+    """Delete a general transaction."""
+    hareket = get_object_or_404(GenelKasaHareketi, pk=pk)
+    kasa_id = hareket.kasa.id
+    
+    if request.method == 'POST':
+        try:
+            hareket.delete()
+            messages.success(request, "Kasa hareketi başarıyla silindi.")
+        except Exception as e:
+            messages.error(request, f'İşlem hatası: {str(e)}')
+            
+    return redirect('kasa_detail', pk=kasa_id) 
+
+
+def get_live_exchange_rate_ajax(request):
+    from_currency_param = request.GET.get('from_currency')
+    to_currency_param = request.GET.get('to_currency')
+    
+    print(f"AJAX Call: Raw params from='{from_currency_param}', to='{to_currency_param}'")
+
+    if not from_currency_param or not to_currency_param:
+        return JsonResponse({'error': 'Kaynak ve hedef para birimi kodları gerekli.'}, status=400)
+
+    from_currency_iso = _resolve_currency_iso_code(from_currency_param)
+    to_currency_iso = _resolve_currency_iso_code(to_currency_param)
+
+    print(f"AJAX Call: Resolved ISO codes from='{from_currency_iso}', to='{to_currency_iso}'")
+
+    if from_currency_iso == "XXX" or to_currency_iso == "XXX":
+        # Corrected f-string for this block
+        error_msg = f"Geçersiz para birimi kodu. Kaynak: {from_currency_param} (çözümlendi: {from_currency_iso}), Hedef: {to_currency_param} (çözümlendi: {to_currency_iso})"
+        return JsonResponse({'error': error_msg}, status=400)
+
+    if from_currency_iso == to_currency_iso:
+        return JsonResponse({'rate': '1.000000'})
+
+    rate_value = get_exchange_rate(from_currency_iso, to_currency_iso)
+
+    if rate_value is None:
+        print(f"AJAX Call: get_exchange_rate returned None for {from_currency_iso} -> {to_currency_iso}")
+        # Corrected f-string for THIS block, which matches the traceback's problematic content
+        error_msg = f"{from_currency_iso} -> {to_currency_iso} için kur bilgisi API'den alınamadı."
+        return JsonResponse({'error': error_msg}, status=500)
+
+    # Ensure rate_value is Decimal before quantize
+    if not isinstance(rate_value, Decimal):
+        print(f"AJAX Call: CRITICAL ERROR - get_exchange_rate non-Decimal/non-None bir değer döndürdü. Tip: {type(rate_value)}, Değer: {rate_value}")
+        return JsonResponse({'error': 'Kur değeri işlenirken iç sunucu hatası (tip uyumsuzluğu).'}, status=500)
+
+    try:
+        quantizer = Decimal('0.000001')
+        quantized_rate = rate_value.quantize(quantizer)
+        quantized_rate_str = str(quantized_rate)
+        return JsonResponse({'rate': quantized_rate_str})
+    except Exception as e: 
+        print(f"AJAX Call: ERROR quantizing rate. Değer: {rate_value}, Tip: {type(rate_value)}. Hata: {e}")
+        traceback.print_exc()
+        return JsonResponse({'error': 'Kur değeri işlenirken bir hata oluştu.'}, status=500) 

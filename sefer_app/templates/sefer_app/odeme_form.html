@@ -1,0 +1,128 @@
+{% extends 'sefer_app/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Fatura Ödemesi Ekle{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Fatura Ödemesi Ekle</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="{% url 'index' %}">Ana Sayfa</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'fatura_list' %}">Faturalar</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'fatura_detail' fatura.id %}">{{ fatura.FaturaNo }}</a></li>
+        <li class="breadcrumb-item active">Ödeme Ekle</li>
+    </ol>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-money-bill-wave me-1"></i>
+            Fatura Ödeme Bilgileri
+        </div>
+        <div class="card-body">
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <h5>Fatura Bilgileri</h5>
+                    <p><strong>Fatura No:</strong> {{ fatura.FaturaNo }}</p>
+                    <p><strong>Cari:</strong> {{ fatura.Firma.FirmaAdi }}</p>
+                    <p><strong>Fatura Tipi:</strong> {{ fatura.FaturaTipi }}</p>
+                    <p><strong>Fatura Tarihi:</strong> {{ fatura.FaturaTarihi|date:"d.m.Y" }}</p>
+                </div>
+                <div class="col-md-6">
+                    <h5>Ödeme Durumu</h5>
+                    <p><strong>Toplam Tutar:</strong> {{ fatura.ToplamTutar }} €</p>
+                    <p><strong>Ödenen Tutar:</strong> {{ fatura.OdenenTutar }} €</p>
+                    <p><strong>Kalan Tutar:</strong> {{ kalan_tutar|default:fatura.ToplamTutar|sub:fatura.OdenenTutar }} €</p>
+                    <p><strong>Ödeme Durumu:</strong> 
+                        <span class="badge {% if fatura.OdemeDurumu == 'Ödendi' %}bg-success{% elif fatura.OdemeDurumu == 'Kısmi Ödeme' %}bg-warning{% else %}bg-danger{% endif %}">
+                            {{ fatura.OdemeDurumu }}
+                        </span>
+                    </p>
+                </div>
+            </div>
+
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="OdemeTarihi" class="form-label">Ödeme Tarihi *</label>
+                            <input type="date" class="form-control" id="OdemeTarihi" name="OdemeTarihi" value="{{ today|date:'Y-m-d' }}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="Tutar" class="form-label">Tutar *</label>
+                            <input type="text" class="form-control" id="Tutar" name="Tutar" value="{{ kalan_tutar|default:fatura.ToplamTutar|sub:fatura.OdenenTutar }}" placeholder="0.00" required>
+                            <div class="form-text">Kalan tutar: {{ kalan_tutar|default:fatura.ToplamTutar|sub:fatura.OdenenTutar }} € - Kalan tutardan fazla ödeme yapılamaz</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="OdemeTipi" class="form-label">Ödeme Tipi *</label>
+                            <select class="form-select" id="OdemeTipi" name="OdemeTipi" required>
+                                <option value="">Ödeme tipi seçin</option>
+                                <option value="Nakit">Nakit</option>
+                                <option value="Banka Transferi">Banka Transferi</option>
+                                <option value="Kredi Kartı">Kredi Kartı</option>
+                                <option value="Çek">Çek</option>
+                                <option value="Senet">Senet</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="Kasa" class="form-label">Kasa *</label>
+                            <select class="form-select" id="Kasa" name="Kasa" required>
+                                <option value="">Kasa seçin</option>
+                                {% for kasa in kasalar %}
+                                <option value="{{ kasa.id }}">{{ kasa.kasa_adi }} ({{ kasa.para_birimi }})</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Ödemenin yapıldığı/alındığı kasayı seçin</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-3">
+                    <label for="Aciklama" class="form-label">Açıklama</label>
+                    <textarea class="form-control" id="Aciklama" name="Aciklama" rows="3"></textarea>
+                </div>
+                
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">Ödeme Kaydet</button>
+                    <a href="{% url 'fatura_detail' fatura.id %}" class="btn btn-secondary">İptal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Hesaplanan değerleri data attribute olarak saklayalım -->
+<div id="payment-data" 
+     data-kalan-tutar="{{ fatura.ToplamTutar|sub:fatura.OdenenTutar|default:'0' }}" 
+     style="display: none;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Veri özniteliğinden kalan tutarı al
+        const paymentData = document.getElementById('payment-data');
+        const kalanTutar = parseFloat(paymentData.dataset.kalanTutar) || 0;
+        
+        // Fatura tipine göre tavsiye edilen kalan tutarı doldur
+        const tutarInput = document.getElementById('Tutar');
+        
+        // Input odaklandığında değer boşsa kalan tutarı yaz
+        tutarInput.addEventListener('focus', function() {
+            if (!this.value) {
+                this.value = kalanTutar;
+            }
+        });
+    });
+</script>
+{% endblock %} 

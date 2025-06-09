@@ -1,0 +1,56 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Sefer Sil - {{ sefer.rota }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Sefer Sil</h1>
+        <a href="{% url 'sefer_detail' sefer.id %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Detay Sayfasına Dön
+        </a>
+    </div>
+    
+    <div class="card">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">Silme Onayı</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Uyarı:</strong> Bu seferi silmek istediğinize emin misiniz?
+            </div>
+            
+            <div class="mb-4">
+                <h5>Sefer Bilgileri:</h5>
+                <ul>
+                    <li><strong>Rota:</strong> {{ sefer.rota }}</li>
+                    <li><strong>Firma:</strong> {{ sefer.firma.FirmaAdi }}</li>
+                    <li><strong>Araç:</strong> {{ sefer.arac.Plaka }}</li>
+                    <li><strong>Sürücü:</strong> {{ sefer.personel.PerAd }} {{ sefer.personel.PerSoyad }}</li>
+                    <li><strong>Çıkış Tarihi:</strong> {{ sefer.cikis_tarihi|date:"d.m.Y H:i" }}</li>
+                    <li><strong>Durum:</strong> {{ sefer.durum }}</li>
+                </ul>
+            </div>
+            
+            {% if has_related_records %}
+            <div class="alert alert-danger mb-4">
+                <i class="fas fa-ban"></i> <strong>Dikkat:</strong> Bu sefere bağlı masraflar ve/veya faturalar bulunmaktadır. Silme işlemi bu kayıtları da etkileyecektir.
+            </div>
+            {% endif %}
+            
+            <div class="d-flex justify-content-between">
+                <a href="{% url 'sefer_detail' sefer.id %}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> İptal
+                </a>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="confirm_delete" value="true">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Seferi Sil
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

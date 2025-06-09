@@ -1,0 +1,260 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Bakımlar - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}Bakımlar{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Araç Bakımları</h1>
+        <div>
+            <a href="{% url 'arac_list' %}" class="btn btn-sm btn-secondary shadow-sm me-2">
+                <i class="fas fa-truck-moving fa-sm text-white-50 me-1"></i> Araçlar
+            </a>
+            <a href="{% url 'bakim_create' %}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-plus fa-sm text-white-50 me-1"></i> Yeni Bakım Kaydı
+            </a>
+        </div>
+    </div>
+
+    <!-- Genel Bilgi Bandı -->
+    <div class="card shadow mb-4">
+        <div class="card-body p-0">
+            <div class="row g-0">
+                <div class="col-md-2 bg-light p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-tools text-primary mb-2" style="font-size: 2rem;"></i>
+                    <h5 class="mb-0">{{ bakimlar.count }}</h5>
+                    <p class="text-muted small mb-0">Toplam Bakım</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-calendar-check text-success mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ bu_ay_yapilan }}</h6>
+                    <p class="text-muted small mb-0">Bu Ay Yapılan</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-bell text-warning mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ yaklasan_bakimlar }}</h6>
+                    <p class="text-muted small mb-0">Yaklaşan Bakımlar</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-truck-moving text-info mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ bakimli_arac_sayisi }}</h6>
+                    <p class="text-muted small mb-0">Bakımlı Araç</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-calendar-day text-primary mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ ortalama_bakim_suresi|default:"0" }} gün</h6>
+                    <p class="text-muted small mb-0">Ort. Bakım Süresi</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center">
+                    <i class="fas fa-money-bill-wave text-success mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ toplam_maliyet|default:"0.00"|floatformat:2 }} TL</h6>
+                    <p class="text-muted small mb-0">Toplam Maliyet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtreleme ve Arama -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Bakım Kayıtları Filtrele</h6>
+            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
+        <div class="collapse" id="filterCollapse">
+            <div class="card-body">
+                <form method="get" class="mb-0">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label for="arac" class="form-label">Araç</label>
+                            <select name="arac" id="arac" class="form-select form-control select2">
+                                <option value="">Tüm Araçlar</option>
+                                {% for arac in araclar %}
+                                <option value="{{ arac.id }}" {% if request.GET.arac == arac.id|stringformat:"s" %}selected{% endif %}>
+                                    {{ arac.plaka }} - {{ arac.marka }} {{ arac.model }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="bakim_turu" class="form-label">Bakım Türü</label>
+                            <select name="bakim_turu" id="bakim_turu" class="form-select form-control select2">
+                                <option value="">Tüm Türler</option>
+                                <option value="Periyodik" {% if request.GET.bakim_turu == 'Periyodik' %}selected{% endif %}>Periyodik</option>
+                                <option value="Yağ Değişimi" {% if request.GET.bakim_turu == 'Yağ Değişimi' %}selected{% endif %}>Yağ Değişimi</option>
+                                <option value="Lastik Değişimi" {% if request.GET.bakim_turu == 'Lastik Değişimi' %}selected{% endif %}>Lastik Değişimi</option>
+                                <option value="Motor" {% if request.GET.bakim_turu == 'Motor' %}selected{% endif %}>Motor</option>
+                                <option value="Fren Sistemi" {% if request.GET.bakim_turu == 'Fren Sistemi' %}selected{% endif %}>Fren Sistemi</option>
+                                <option value="Diğer" {% if request.GET.bakim_turu == 'Diğer' %}selected{% endif %}>Diğer</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="tarih_araligi" class="form-label">Tarih Aralığı</label>
+                            <div class="input-group">
+                                <input type="text" name="baslangic_tarihi" class="form-control datepicker" value="{{ request.GET.baslangic_tarihi|default:'' }}" placeholder="Başlangıç">
+                                <span class="input-group-text">-</span>
+                                <input type="text" name="bitis_tarihi" class="form-control datepicker" value="{{ request.GET.bitis_tarihi|default:'' }}" placeholder="Bitiş">
+                            </div>
+                        </div>
+                        <div class="col-md-2 mb-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-search fa-sm"></i> Filtrele
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bakım Tablosu -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Bakım Kayıtları</h6>
+            <div>
+                <form method="post" action="{% url 'bakim_list' %}" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="export_format" value="excel">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-file-excel fa-sm"></i> Excel
+                    </button>
+                </form>
+                <form method="post" action="{% url 'bakim_list' %}" class="d-inline ms-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="export_format" value="pdf">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="fas fa-file-pdf fa-sm"></i> PDF
+                    </button>
+                </form>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="bakimlarTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Araç</th>
+                            <th>Bakım Türü</th>
+                            <th>Bakım Tarihi</th>
+                            <th>Yapılan İşlemler</th>
+                            <th>Maliyet</th>
+                            <th>Sonraki Bakım</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bakim in bakimlar %}
+                        <tr>
+                            <td>{{ bakim.id }}</td>
+                            <td>
+                                <a href="{% url 'arac_detail' bakim.arac.id %}" class="fw-bold text-primary">
+                                    {{ bakim.arac.plaka }}
+                                </a>
+                            </td>
+                            <td>{{ bakim.bakim_turu }}</td>
+                            <td>{{ bakim.bakim_tarihi|date:"d.m.Y" }}</td>
+                            <td>{{ bakim.yapilan_islemler|truncatechars:50 }}</td>
+                            <td>{{ bakim.maliyet }} TL</td>
+                            <td>
+                                {% if bakim.bir_sonraki_bakim_tarihi %}
+                                <span class="{% if bakim.bir_sonraki_bakim_tarihi <= today %}text-danger fw-bold{% endif %}">
+                                    {{ bakim.bir_sonraki_bakim_tarihi|date:"d.m.Y" }}
+                                </span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group">
+                                    <a href="{% url 'bakim_update' bakim.id %}" class="btn btn-sm btn-info">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'bakim_delete' bakim.id %}" class="btn btn-sm btn-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <div class="alert alert-info mb-0">
+                                    <i class="fas fa-info-circle me-2"></i> Kayıtlı bakım bulunamadı.
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+<script>
+    $(document).ready(function() {
+        // DataTable başlatma
+        var table = $('#bakimlarTable').DataTable({
+            language: {
+                url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/tr.json"
+            },
+            order: [[3, 'desc']], // Bakım tarihine göre sırala (azalan)
+            pageLength: 25,
+            responsive: true
+        });
+        
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: "tr",
+            allowInput: true
+        });
+        
+        // Filter açılışı kontrolü
+        {% if request.GET.arac or request.GET.bakim_turu or request.GET.baslangic_tarihi or request.GET.bitis_tarihi %}
+        // Eğer filtreler varsa filtre panelini aç
+        $('#filterCollapse').addClass('show');
+        {% endif %}
+    });
+</script>
+{% endblock %} 

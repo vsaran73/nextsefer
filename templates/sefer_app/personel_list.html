@@ -1,0 +1,267 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Personeller - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}Personeller{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Personeller</h1>
+        <a href="{% url 'personel_create' %}" class="btn btn-sm btn-primary shadow-sm">
+            <i class="fas fa-plus fa-sm text-white-50 me-1"></i> Yeni Personel Ekle
+        </a>
+    </div>
+
+    <!-- Genel Bilgi Bandı -->
+    <div class="card shadow mb-4">
+        <div class="card-body p-0">
+            <div class="row g-0">
+                <div class="col-md-2 bg-light p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-users text-primary mb-2" style="font-size: 2rem;"></i>
+                    <h5 class="mb-0">{{ toplam_personel_sayisi }}</h5>
+                    <p class="text-muted small mb-0">Toplam Personel</p>
+                            </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-user-check text-success mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ aktif_personel_sayisi }}</h6>
+                    <p class="text-muted small mb-0">Aktif</p>
+                        </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-user-tie text-warning mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ yonetici_sayisi }}</h6>
+                    <p class="text-muted small mb-0">Yöneticiler</p>
+                        </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-truck text-info mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ surucu_sayisi|default:"0" }}</h6>
+                    <p class="text-muted small mb-0">Aktif Sürücüler</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-desktop text-primary mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ ofis_personeli_sayisi|default:"0" }}</h6>
+                    <p class="text-muted small mb-0">Aktif Ofis Personeli</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center">
+                    <i class="fas fa-money-bill text-danger mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ ortalama_maas|floatformat:2 }} €</h6>
+                    <p class="text-muted small mb-0">Ortalama Maaş</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtreleme ve Arama -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Personel Filtrele</h6>
+            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
+        <div class="collapse" id="filterCollapse">
+        <div class="card-body">
+            <form method="get" class="mb-0">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label for="durum" class="form-label">Durum</label>
+                        <select name="durum" id="durum" class="form-select select2">
+                            <option value="">Tümü</option>
+                            <option value="Aktif" {% if durum_filtre == 'Aktif' %}selected{% endif %}>Aktif</option>
+                            <option value="Pasif" {% if durum_filtre == 'Pasif' %}selected{% endif %}>Pasif</option>
+                            <option value="İzinli" {% if durum_filtre == 'İzinli' %}selected{% endif %}>İzinli</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="departman" class="form-label">Departman</label>
+                        <select name="departman" id="departman" class="form-select select2">
+                            <option value="">Tümü</option>
+                            {% for departman in departmanlar %}
+                            {% if departman %}
+                            <option value="{{ departman }}" {% if departman_filtre == departman %}selected{% endif %}>{{ departman }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="ise_baslangic" class="form-label">İşe Başlangıç Tarihi</label>
+                        <input type="text" name="ise_baslangic" id="ise_baslangic" class="form-control datepicker" placeholder="Tarih seçin..." value="{{ ise_baslangic_filtre|default:'' }}">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="arama" class="form-label">Arama</label>
+                        <input type="text" name="arama" id="arama" class="form-control" placeholder="Ad, soyad, telefon veya TC no..." value="{{ arama_filtre }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label for="pozisyon" class="form-label">Pozisyon</label>
+                        <select name="pozisyon" id="pozisyon" class="form-select select2">
+                            <option value="">Tümü</option>
+                            {% for pozisyon in pozisyonlar %}
+                            {% if pozisyon %}
+                            <option value="{{ pozisyon }}" {% if pozisyon_filtre == pozisyon %}selected{% endif %}>{{ pozisyon }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="surucu_tipi" class="form-label">Sürücü Tipi</label>
+                        <select name="surucu_tipi" id="surucu_tipi" class="form-select select2">
+                            <option value="">Tümü</option>
+                            <option value="Evet" {% if surucu_tipi_filtre == 'Evet' %}selected{% endif %}>Sürücü</option>
+                            <option value="Hayır" {% if surucu_tipi_filtre == 'Hayır' %}selected{% endif %}>Sürücü Değil</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 offset-md-2 mb-3 d-flex align-items-end justify-content-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search fa-sm me-1"></i> Filtrele
+                        </button>
+                        <a href="{% url 'personel_list' %}" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt fa-sm me-1"></i> Sıfırla
+                        </a>
+                    </div>
+                </div>
+            </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Personel Tablosu -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Personel Listesi</h6>
+            <div>
+                <a href="{% url 'personel_list' %}?export=excel{% if request.GET.durum %}&durum={{ request.GET.durum }}{% endif %}{% if request.GET.departman %}&departman={{ request.GET.departman }}{% endif %}{% if request.GET.pozisyon %}&pozisyon={{ request.GET.pozisyon }}{% endif %}{% if request.GET.arama %}&arama={{ request.GET.arama }}{% endif %}{% if request.GET.ise_baslangic %}&ise_baslangic={{ request.GET.ise_baslangic }}{% endif %}{% if request.GET.surucu_tipi %}&surucu_tipi={{ request.GET.surucu_tipi }}{% endif %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-file-excel fa-sm"></i> Excel
+                </a>
+                <a href="{% url 'personel_list' %}?export=pdf{% if request.GET.durum %}&durum={{ request.GET.durum }}{% endif %}{% if request.GET.departman %}&departman={{ request.GET.departman }}{% endif %}{% if request.GET.pozisyon %}&pozisyon={{ request.GET.pozisyon }}{% endif %}{% if request.GET.arama %}&arama={{ request.GET.arama }}{% endif %}{% if request.GET.ise_baslangic %}&ise_baslangic={{ request.GET.ise_baslangic }}{% endif %}{% if request.GET.surucu_tipi %}&surucu_tipi={{ request.GET.surucu_tipi }}{% endif %}" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-file-pdf fa-sm"></i> PDF
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="personelTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Ad Soyad</th>
+                            <th>Departman</th>
+                            <th>Pozisyon</th>
+                            <th>Telefon</th>
+                            <th>Durum</th>
+                            <th>İşe Başlangıç</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for personel in personeller %}
+                        <tr>
+                            <td>{{ personel.id }}</td>
+                            <td>
+                                <a href="{% url 'personel_detail' personel.id %}" class="fw-bold text-primary">
+                                    {{ personel.PerAd }} {{ personel.PerSoyad }}
+                                </a>
+                            </td>
+                            <td>{{ personel.Departman|default:"-" }}</td>
+                            <td>{{ personel.Pozisyon|default:"-" }}</td>
+                            <td>{{ personel.Telefon|default:"-" }}</td>
+                            <td>
+                                <span class="badge {% if personel.Durum == 'Aktif' %}bg-success{% elif personel.Durum == 'İzinli' %}bg-warning{% else %}bg-danger{% endif %} text-white">
+                                    {{ personel.Durum }}
+                                </span>
+                            </td>
+                            <td>{{ personel.IseBaslangicTarihi|date:"d.m.Y"|default:"-" }}</td>
+                            <td class="text-center">
+                                <div class="btn-group">
+                                    <a href="{% url 'personel_detail' personel.id %}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <a href="{% url 'personel_update' personel.id %}" class="btn btn-sm btn-info">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'personel_delete' personel.id %}" class="btn btn-sm btn-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <div class="alert alert-info mb-0">
+                                    <i class="fas fa-info-circle me-2"></i> Personel kaydı bulunamadı.
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/tr.js"></script>
+<script>
+    $(document).ready(function() {
+        // DataTable başlatma
+        var table = $('#personelTable').DataTable({
+            language: {
+                url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/tr.json"
+            },
+            order: [[1, 'asc']], // Ad soyad'a göre sırala
+            pageLength: 25,
+            responsive: true
+        });
+        
+        // Select2 için yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: "tr",
+            allowInput: true
+        });
+        
+        // Filter açılışı kontrolü
+        {% if durum_filtre or departman_filtre or ise_baslangic_filtre or arama_filtre or pozisyon_filtre or surucu_tipi_filtre %}
+        // Eğer filtreler varsa filtre panelini aç
+        $('#filterCollapse').addClass('show');
+        {% endif %}
+    });
+</script>
+{% endblock %} 

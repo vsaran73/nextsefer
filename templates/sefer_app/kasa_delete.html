@@ -1,0 +1,85 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}{{ kasa.kasa_adi }} - Kasayı Sil{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Kasa Silme Onayı</h1>
+        <a href="{% url 'kasa_detail' kasa.id %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Geri
+        </a>
+    </div>
+    
+    <!-- Mesajlar -->
+    {% if messages %}
+    <div class="row mb-3">
+        <div class="col-12">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Silme Onay Kartı -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-danger">Kasa Silme İşlemi</h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning" role="alert">
+                <h5 class="alert-heading">Dikkat!</h5>
+                <p>
+                    <strong>"{{ kasa.kasa_adi }}"</strong> adlı kasayı silmek üzeresiniz. Bu işlem geri alınamaz ve kasaya 
+                    ait tüm veriler silinecektir.
+                </p>
+                <hr>
+                <p class="mb-0">
+                    Bu kasa ile ilişkili sefer masrafları varsa, kasa silinemez. Lütfen önce ilgili masrafları başka bir kasaya taşıyın 
+                    veya silin.
+                </p>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <tbody>
+                        <tr>
+                            <th style="width: 30%">Kasa Adı</th>
+                            <td>{{ kasa.kasa_adi }}</td>
+                        </tr>
+                        <tr>
+                            <th>Kasa Tipi</th>
+                            <td>{{ kasa.kasa_tipi }}</td>
+                        </tr>
+                        <tr>
+                            <th>Para Birimi</th>
+                            <td>{{ kasa.para_birimi }}</td>
+                        </tr>
+                        <tr>
+                            <th>Başlangıç Bakiyesi</th>
+                            <td>{{ kasa.baslangic_bakiyesi }} {{ kasa.para_birimi }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="text-center mt-4">
+                <form method="post" action="{% url 'kasa_delete' kasa.id %}">
+                    {% csrf_token %}
+                    <a href="{% url 'kasa_detail' kasa.id %}" class="btn btn-secondary me-2">
+                        <i class="fas fa-times me-1"></i> İptal
+                    </a>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-1"></i> Kasayı Sil
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

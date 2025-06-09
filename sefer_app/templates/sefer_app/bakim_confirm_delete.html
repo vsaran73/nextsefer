@@ -1,0 +1,62 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Bakım Kaydı Sil - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block page_title %}Bakım Kaydı Sil{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Bakım Kaydı Sil</h1>
+        <a href="{% url 'arac_detail' pk=bakim.arac.id %}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left fa-sm text-white-50 me-1"></i> Araç Detayına Dön
+        </a>
+    </div>
+
+    <!-- Silme Onay Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-danger">Silme Onayı</h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <h5>Dikkat!</h5>
+                <p>Aşağıdaki bakım kaydını silmek üzeresiniz. Bu işlem geri alınamaz.</p>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="font-weight-bold text-primary mb-0">Bakım Bilgileri</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Araç:</strong> {{ bakim.arac.plaka }} - {{ bakim.arac.marka }} {{ bakim.arac.model }}</p>
+                            <p><strong>Bakım Türü:</strong> {{ bakim.bakim_turu }}</p>
+                            <p><strong>Bakım Tarihi:</strong> {{ bakim.bakim_tarihi }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Maliyet:</strong> {{ bakim.maliyet }} {{ bakim.para_birimi }}</p>
+                            <p><strong>Yapılan İşlemler:</strong> {{ bakim.yapilan_islemler|truncatechars:50 }}</p>
+                            {% if bakim.kasa %}
+                            <p><strong>Kasa:</strong> {{ bakim.kasa.kasa_adi }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'arac_detail' pk=bakim.arac.id %}" class="btn btn-secondary">İptal</a>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash fa-sm text-white-50 me-1"></i> Bakım Kaydını Sil
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

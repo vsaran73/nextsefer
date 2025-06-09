@@ -1,0 +1,450 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Personel Detayları - {{ personel.PerAd }} {{ personel.PerSoyad }}{% endblock %}
+
+{% block page_title %}Personel Detayları - {{ personel.PerAd }} {{ personel.PerSoyad }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5>Personel Bilgileri</h5>
+            <div>
+                <a href="{% url 'personel_detail_pdf' personel.id %}" class="btn btn-danger btn-sm" target="_blank">
+                    <i class="fas fa-file-pdf"></i> PDF
+                </a>
+                <a href="{% url 'personel_update' personel.id %}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-edit"></i> Düzenle
+                </a>
+                <a href="{% url 'personel_delete' personel.id %}" class="btn btn-danger btn-sm">
+                    <i class="fas fa-trash"></i> Sil
+                </a>
+                <a href="{% url 'personel_list' %}" class="btn btn-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> Listeye Dön
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Sol Kolon: Personel Profili ve Açıklama -->
+    <div class="col-md-4 mb-4">
+        <!-- Personel Profil Kartı -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Personel Profili</h6>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <i class="fas fa-user-circle fa-7x text-gray-300 mb-3"></i>
+                    <h4>{{ personel.PerAd }} {{ personel.PerSoyad }}</h4>
+                    <p class="text-muted">
+                        {{ personel.Pozisyon|default:"Pozisyon Belirtilmemiş" }} / {{ personel.Departman|default:"Departman Belirtilmemiş" }}
+                    </p>
+                    <div>
+                        {% if personel.Durum == 'Aktif' %}
+                        <span class="badge bg-success">{{ personel.Durum }}</span>
+                        {% elif personel.Durum == 'İzinli' %}
+                        <span class="badge bg-warning">{{ personel.Durum }}</span>
+                        {% else %}
+                        <span class="badge bg-danger">{{ personel.Durum }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <h6 class="font-weight-bold text-primary">İletişim Bilgileri</h6>
+                    <div class="mb-2">
+                        <i class="fas fa-phone text-gray-500 me-2"></i> {{ personel.Telefon|default:"Telefon Belirtilmemiş" }}
+                    </div>
+                    <div class="mb-2">
+                        <i class="fas fa-envelope text-gray-500 me-2"></i> {{ personel.Eposta|default:"E-posta Belirtilmemiş" }}
+                    </div>
+                    <div>
+                        <i class="fas fa-map-marker-alt text-gray-500 me-2"></i> {{ personel.Adres|default:"Adres Belirtilmemiş" }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Açıklama Kartı - Sol kolona taşındı -->
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Açıklama</h6>
+            </div>
+            <div class="card-body">
+                <p>{{ personel.Aciklama|default:"Açıklama bulunmuyor."|linebreaks }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sağ Kolon: Detay Bilgileri -->
+    <div class="col-md-8 mb-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Personel Detayları</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Personel ID</label>
+                            <div class="form-control-plaintext">{{ personel.id }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Vatandaşlık No (TC)</label>
+                            <div class="form-control-plaintext">{{ personel.VatandaslikNo|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Ad</label>
+                            <div class="form-control-plaintext">{{ personel.PerAd }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Soyad</label>
+                            <div class="form-control-plaintext">{{ personel.PerSoyad }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Departman</label>
+                            <div class="form-control-plaintext">{{ personel.Departman|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Pozisyon</label>
+                            <div class="form-control-plaintext">{{ personel.Pozisyon|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Doğum Tarihi</label>
+                            <div class="form-control-plaintext">{{ personel.DogumTarihi|date:"d.m.Y"|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">İşe Başlangıç Tarihi</label>
+                            <div class="form-control-plaintext">{{ personel.IseBaslangicTarihi|date:"d.m.Y"|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Maaş</label>
+                            <div class="form-control-plaintext">{{ personel.Maas|default:"-" }} €</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label class="small text-gray-600">Durum</label>
+                            <div class="form-control-plaintext">
+                                {% if personel.Durum == 'Aktif' %}
+                                <span class="badge bg-success">{{ personel.Durum }}</span>
+                                {% elif personel.Durum == 'İzinli' %}
+                                <span class="badge bg-warning">{{ personel.Durum }}</span>
+                                {% else %}
+                                <span class="badge bg-danger">{{ personel.Durum }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Ödemeler - Açıklama kısmı yerine eklendi -->
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Ödemeler</h6>
+                <a href="#" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#yeniOdemeModal">
+                    <i class="fas fa-plus fa-sm"></i> Yeni Ödeme Ekle
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Belge No</th>
+                                <th>Tarih</th>
+                                <th>Açıklama</th>
+                                <th>Tutar</th>
+                                <th>Tür</th>
+                                <th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if odemeler %}
+                                {% for odeme in odemeler %}
+                                <tr>
+                                    <td>{{ odeme.belge_no }}</td>
+                                    <td>{{ odeme.tarih|date:"d.m.Y" }}</td>
+                                    <td>{{ odeme.aciklama|default:"" }}</td>
+                                    <td>{{ odeme.tutar|floatformat:2 }} €</td>
+                                    <td>
+                                        {% if odeme.odeme_turu == 'Maaş' %}
+                                            <span class="badge bg-success">{{ odeme.odeme_turu }}</span>
+                                        {% elif odeme.odeme_turu == 'Avans' %}
+                                            <span class="badge bg-warning">{{ odeme.odeme_turu }}</span>
+                                        {% elif odeme.odeme_turu == 'Harcırah' %}
+                                            <span class="badge bg-info">{{ odeme.odeme_turu }}</span>
+                                        {% elif odeme.odeme_turu == 'Prim' %}
+                                            <span class="badge bg-primary">{{ odeme.odeme_turu }}</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ odeme.odeme_turu }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button type="button" class="btn btn-sm btn-info" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#duzenleOdemeModal{{ odeme.id }}">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-danger" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#silOdemeModal{{ odeme.id }}">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                        
+                                        <!-- Edit Payment Modal for each payment -->
+                                        <div class="modal fade" id="duzenleOdemeModal{{ odeme.id }}" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Ödeme Düzenle</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <form action="{% url 'personel_odeme_update' odeme.id %}" method="post">
+                                                        {% csrf_token %}
+                                                        <div class="modal-body">
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Belge No</label>
+                                                                <input type="text" name="belge_no" class="form-control" value="{{ odeme.belge_no }}" readonly>
+                                                            </div>
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Ödeme Türü <span class="text-danger">*</span></label>
+                                                                <select name="odeme_turu" class="form-control" required>
+                                                                    <option value="Maaş" {% if odeme.odeme_turu == 'Maaş' %}selected{% endif %}>Maaş</option>
+                                                                    <option value="Avans" {% if odeme.odeme_turu == 'Avans' %}selected{% endif %}>Avans</option>
+                                                                    <option value="Harcırah" {% if odeme.odeme_turu == 'Harcırah' %}selected{% endif %}>Harcırah</option>
+                                                                    <option value="Prim" {% if odeme.odeme_turu == 'Prim' %}selected{% endif %}>Prim</option>
+                                                                    <option value="İkramiye" {% if odeme.odeme_turu == 'İkramiye' %}selected{% endif %}>İkramiye</option>
+                                                                    <option value="Diğer" {% if odeme.odeme_turu == 'Diğer' %}selected{% endif %}>Diğer</option>
+                                                                </select>
+                                                            </div>
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Tutar (€) <span class="text-danger">*</span></label>
+                                                                <input type="number" name="tutar" class="form-control" value="{{ odeme.tutar }}" step="0.01" required>
+                                                            </div>
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Tarih</label>
+                                                                <input type="date" name="tarih" class="form-control" value="{{ odeme.tarih|date:'Y-m-d' }}">
+                                                            </div>
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Kasa <span class="text-danger">*</span></label>
+                                                                <select name="kasa" class="form-control" required>
+                                                                    <option value="">-- Kasa Seçiniz --</option>
+                                                                    {% for kasa in kasalar %}
+                                                                    <option value="{{ kasa.id }}" {% if odeme.kasa and odeme.kasa.id == kasa.id %}selected{% endif %}>
+                                                                        {{ kasa.kasa_adi }} ({{ kasa.para_birimi }})
+                                                                    </option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                <small class="form-text text-muted">Ödemenin yapılacağı kasa</small>
+                                                            </div>
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Açıklama</label>
+                                                                <textarea name="aciklama" class="form-control">{{ odeme.aciklama }}</textarea>
+                                                            </div>
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                                                            <button type="submit" class="btn btn-primary">Güncelle</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Delete Payment Modal for each payment -->
+                                        <div class="modal fade" id="silOdemeModal{{ odeme.id }}" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Ödeme Sil</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <p>Bu ödeme kaydını silmek istediğinizden emin misiniz?</p>
+                                                        <p><strong>Belge No:</strong> {{ odeme.belge_no }}</p>
+                                                        <p><strong>Tarih:</strong> {{ odeme.tarih|date:"d.m.Y" }}</p>
+                                                        <p><strong>Tutar:</strong> {{ odeme.tutar|floatformat:2 }} €</p>
+                                                        <p><strong>Tür:</strong> {{ odeme.odeme_turu }}</p>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                                                        <form action="{% url 'personel_odeme_delete' odeme.id %}" method="post" style="display:inline;">
+                                                            {% csrf_token %}
+                                                            <button type="submit" class="btn btn-danger">Sil</button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4">
+                                    <div class="alert alert-info mb-0">
+                                        <i class="fas fa-info-circle me-2"></i> Bu personel için henüz ödeme kaydı bulunmuyor.
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create New Payment Modal -->
+<div class="modal fade" id="yeniOdemeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Yeni Ödeme Ekle</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{% url 'personel_odeme_create' personel.id %}" method="post">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Belge No</label>
+                        <input type="text" name="belge_no" class="form-control" value="{{ default_belge_no }}" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ödeme Türü <span class="text-danger">*</span></label>
+                        <select name="odeme_turu" class="form-control" required>
+                            <option value="">-- Seçiniz --</option>
+                            <option value="Maaş">Maaş</option>
+                            <option value="Avans">Avans</option>
+                            <option value="Harcırah">Harcırah</option>
+                            <option value="Prim">Prim</option>
+                            <option value="İkramiye">İkramiye</option>
+                            <option value="Diğer">Diğer</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tutar (€) <span class="text-danger">*</span></label>
+                        <input type="number" name="tutar" class="form-control" step="0.01" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tarih</label>
+                        <input type="date" name="tarih" class="form-control" value="{{ today|date:'Y-m-d' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Kasa <span class="text-danger">*</span></label>
+                        <select name="kasa" class="form-control" required>
+                            <option value="">-- Kasa Seçiniz --</option>
+                            {% for kasa in kasalar %}
+                            <option value="{{ kasa.id }}">{{ kasa.kasa_adi }} ({{ kasa.para_birimi }})</option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">Ödemenin yapılacağı kasa</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Açıklama</label>
+                        <textarea name="aciklama" class="form-control"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-primary">Kaydet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- İlişkili Seferler -->
+{% if seferler %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Personelin Seferleri</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Sefer Kodu</th>
+                        <th>Tarih</th>
+                        <th>Güzergah</th>
+                        <th>Araç</th>
+                        <th>Durum</th>
+                        <th>İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sefer in seferler %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'sefer_detail' sefer.id %}" class="fw-bold text-primary">
+                                {{ sefer.sefer_kodu }}
+                            </a>
+                        </td>
+                        <td>{{ sefer.cikis_tarihi|date:"d.m.Y" }}</td>
+                        <td>{{ sefer.baslangic_sehri.sehir_adi }}, {{ sefer.baslangic_ulkesi.ulke_adi }} → {{ sefer.bitis_sehri.sehir_adi }}, {{ sefer.bitis_ulkesi.ulke_adi }}</td>
+                        <td>{{ sefer.arac.plaka }}</td>
+                        <td>
+                            {% if sefer.durum == 'Aktif' %}
+                            <span class="badge bg-primary">{{ sefer.durum }}</span>
+                            {% elif sefer.durum == 'Tamamlandı' %}
+                            <span class="badge bg-success">{{ sefer.durum }}</span>
+                            {% elif sefer.durum == 'İptal Edildi' %}
+                            <span class="badge bg-danger">{{ sefer.durum }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ sefer.durum }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{% url 'sefer_detail' sefer.id %}" class="btn btn-info btn-sm">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %} 

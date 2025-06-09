@@ -1,0 +1,51 @@
+/* Custom CSS for admin */
+.dashboard-card {
+    background-color: #fff;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    padding: 15px;
+}
+
+.dashboard-header {
+    border-bottom: 1px solid #eee;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+}
+
+.dashboard-stat {
+    display: inline-block;
+    margin-right: 20px;
+    text-align: center;
+}
+
+.dashboard-stat-number {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.dashboard-stat-label {
+    color: #666;
+    font-size: 14px;
+}
+
+/* Profile form customization */
+.profile-form-section {
+    border: 1px solid #eee;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 5px;
+}
+
+.profile-form-section h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.profile-image-preview {
+    max-width: 150px;
+    max-height: 150px;
+    margin: 10px 0;
+    border-radius: 5px;
+} 

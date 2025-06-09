@@ -1,0 +1,246 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Kasa Transferi Oluştur{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+    
+    #kurInfo.updated {
+        color: #1cc88a; /* Green for success */
+        font-weight: bold;
+    }
+    
+    #kurInfo.error {
+        color: #e74a3b; /* Red for error */
+        font-weight: bold;
+    }
+    #kurInfo.info {
+        color: #858796; /* Default gray for info */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Kasa Transferi Oluştur</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="{% url 'index' %}">Ana Sayfa</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'kasa_list' %}">Kasalar</a></li>
+        <li class="breadcrumb-item active">Kasa Transferi Oluştur</li>
+    </ol>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-exchange-alt me-1"></i>
+            Kasa Transferi Bilgileri
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="kaynak_kasa" class="form-label">Kaynak Kasa *</label>
+                            <select class="form-select select2" id="kaynak_kasa" name="kaynak_kasa" required>
+                                <option value="">Kaynak kasa seçin</option>
+                                {% for kasa_item in kasalar %}
+                                <option value="{{ kasa_item.id }}" data-currency="{{ kasa_item.resolved_currency_code }}" {% if kaynak_kasa_form_id == kasa_item.id|stringformat:"s" %}selected{% endif %}>{{ kasa_item.kasa_adi }} ({{ kasa_item.resolved_currency_code }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="hedef_kasa" class="form-label">Hedef Kasa *</label>
+                            <select class="form-select select2" id="hedef_kasa" name="hedef_kasa" required>
+                                <option value="">Hedef kasa seçin</option>
+                                {% for kasa_item in kasalar %}
+                                <option value="{{ kasa_item.id }}" data-currency="{{ kasa_item.resolved_currency_code }}" {% if hedef_kasa_form_id == kasa_item.id|stringformat:"s" %}selected{% endif %}>{{ kasa_item.kasa_adi }} ({{ kasa_item.resolved_currency_code }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="tarih" class="form-label">Transfer Tarihi *</label>
+                            <input type="text" class="form-control datepicker-datetime" id="tarih" name="tarih" value="{{ tarih_form|default_if_none:'' }}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="tutar" class="form-label">Transfer Tutarı *</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="tutar" name="tutar" placeholder="0.00" value="{{ tutar_form|default_if_none:'' }}" required>
+                                <span class="input-group-text" id="kaynak_currency_label"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="kur_container" class="row mb-3" style="display: none;">
+                    <div class="col-md-12">
+                        <div class="form-group mb-3">
+                            <label for="kur" class="form-label">Döviz Kuru</label>
+                            <div class="input-group">
+                                <span class="input-group-text">1</span>
+                                <span class="input-group-text" id="kur_kaynak_currency_text"></span>
+                                <span class="input-group-text">=</span>
+                                <input type="text" class="form-control" id="kur" name="kur" value="1.0000" readonly>
+                                <span class="input-group-text" id="kur_hedef_currency_text"></span>
+                            </div>
+                            <div class="form-text" id="kurInfo"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-3">
+                    <label for="aciklama" class="form-label">Açıklama</label>
+                    <textarea class="form-control" id="aciklama" name="aciklama" rows="3">{{ aciklama_form|default_if_none:'' }}</textarea>
+                </div>
+                
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">Transferi Kaydet</button>
+                    <a href="{% url 'kasa_list' %}" class="btn btn-secondary">İptal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://npmcdn.com/flatpickr/dist/l10n/tr.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tarihInput = document.getElementById('tarih');
+    const defaultTarihValue = tarihInput.value && tarihInput.value.trim() !== "" ? tarihInput.value : new Date();
+
+    flatpickr(".datepicker-datetime", {
+        enableTime: true,
+        dateFormat: "Y-m-d H:i:S",
+        time_24hr: true,
+        locale: "tr",
+        defaultDate: defaultTarihValue,
+        allowInput: true,
+        onClose: function(selectedDates, dateStr) {
+            // Ensure the date is properly formatted
+            if (selectedDates.length > 0) {
+                const date = selectedDates[0];
+                const formattedDate = date.getFullYear() + '-' + 
+                                     String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                                     String(date.getDate()).padStart(2, '0') + ' ' +
+                                     String(date.getHours()).padStart(2, '0') + ':' +
+                                     String(date.getMinutes()).padStart(2, '0') + ':' +
+                                     String(date.getSeconds()).padStart(2, '0');
+                tarihInput.value = formattedDate;
+            }
+        }
+    });
+
+    const kaynakKasaSelect = document.getElementById('kaynak_kasa');
+    const hedefKasaSelect = document.getElementById('hedef_kasa');
+    const kurInput = document.getElementById('kur');
+    const kurInfo = document.getElementById('kurInfo');
+    const kurContainer = document.getElementById('kur_container');
+    const kaynakCurrencyLabel = document.getElementById('kaynak_currency_label');
+    const kurKaynakCurrencyText = document.getElementById('kur_kaynak_currency_text');
+    const kurHedefCurrencyText = document.getElementById('kur_hedef_currency_text');
+
+    function fetchAndUpdateExchangeRate() {
+        const kaynakOption = kaynakKasaSelect.options[kaynakKasaSelect.selectedIndex];
+        const hedefOption = hedefKasaSelect.options[hedefKasaSelect.selectedIndex];
+
+        if (!kaynakKasaSelect.value || !hedefKasaSelect.value || !kaynakOption || !hedefOption || !kaynakOption.dataset.currency || !hedefOption.dataset.currency) {
+            kurContainer.style.display = 'none';
+            kaynakCurrencyLabel.textContent = kaynakOption && kaynakOption.dataset.currency ? kaynakOption.dataset.currency : '';
+            return;
+        }
+
+        const kaynakCurrency = kaynakOption.dataset.currency;
+        const hedefCurrency = hedefOption.dataset.currency;
+        
+        kaynakCurrencyLabel.textContent = kaynakCurrency;
+        kurKaynakCurrencyText.textContent = kaynakCurrency;
+        kurHedefCurrencyText.textContent = hedefCurrency;
+
+        if (kaynakCurrency === "XXX" || hedefCurrency === "XXX") {
+            kurContainer.style.display = 'block';
+            kurInput.value = '-';
+            kurInfo.textContent = 'Seçili kasaların para birimi kodu geçersiz. Lütfen kasa ayarlarını kontrol edin.';
+            kurInfo.className = 'form-text error';
+            return;
+        }
+
+        if (kaynakCurrency === hedefCurrency) {
+            kurInput.value = '1.0000';
+            kurInfo.textContent = 'Para birimleri aynı, kur 1.0000 olarak ayarlandı.';
+            kurInfo.className = 'form-text info';
+            kurContainer.style.display = 'block'; 
+        } else {
+            kurContainer.style.display = 'block';
+            kurInfo.textContent = 'Kur bilgisi çekiliyor...';
+            kurInfo.className = 'form-text info';
+            kurInput.value = ''; 
+
+            fetch(`/ajax/get_exchange_rate/?from_currency=${kaynakCurrency}&to_currency=${hedefCurrency}`)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => { throw new Error(err.error || `HTTP error! status: ${response.status}`); });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.rate) {
+                        kurInput.value = parseFloat(data.rate).toFixed(4);
+                        kurInfo.textContent = `1 ${kaynakCurrency} = ${kurInput.value} ${hedefCurrency} (Anlık Kur)`;
+                        kurInfo.className = 'form-text updated';
+                    } else {
+                        kurInput.value = '1.0000'; 
+                        kurInfo.textContent = data.error || 'Kur alınamadı. Varsayılan kur 1.0000 kullanılacak.';
+                        kurInfo.className = 'form-text error';
+                    }
+                })
+                .catch(error => {
+                    console.error('Kur çekme hatası:', error);
+                    kurInput.value = '1.0000';
+                    kurInfo.textContent = error.message || 'Kur bilgisi çekilirken bir hata oluştu. Lütfen internet bağlantınızı kontrol edin veya daha sonra tekrar deneyin.';
+                    kurInfo.className = 'form-text error';
+                });
+        }
+    }
+
+    $('.select2').select2({
+        width: '100%',
+        placeholder: "Seçin..."
+    }).on('change', fetchAndUpdateExchangeRate);
+
+    fetchAndUpdateExchangeRate(); 
+});
+</script>
+{% endblock %} 

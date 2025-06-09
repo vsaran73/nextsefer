@@ -1,0 +1,583 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Sefer Detayları - {{ sefer.sefer_kodu }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-timepicker/0.5.2/css/bootstrap-timepicker.min.css">
+<style>
+    .datepicker {
+        z-index: 9999 !important;
+    }
+    /* Ek özelleştirmeler */
+    .modal-form-controls {
+        max-width: 100%;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    {% comment %} Header Section {% endcomment %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="fas fa-route me-2"></i> Sefer Detayları
+                <span class="badge {% if sefer.durum == 'Aktif' %}bg-success{% elif sefer.durum == 'Tamamlandı' %}bg-info{% else %}bg-danger{% endif %} ms-2">
+                    {{ sefer.durum }}
+                </span>
+            </h1>
+            <p class="text-muted mb-0">Sefer Kodu: {{ sefer.sefer_kodu }}</p>
+        </div>
+        <div class="btn-group">
+            <a href="{% url 'sefer_update' sefer.id %}" class="btn btn-primary">
+                <i class="fas fa-edit"></i> Düzenle
+            </a>
+            <a href="{% url 'sefer_delete' sefer.id %}" class="btn btn-danger">
+                <i class="fas fa-trash"></i> Sil
+            </a>
+            <a href="{% url 'sefer_list' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Listeye Dön
+            </a>
+            <a href="{% url 'sefer_detail_pdf' sefer.id %}" class="btn btn-outline-danger" target="_blank">
+                <i class="fas fa-file-pdf"></i> PDF
+            </a>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Main Content Column -->
+        <div class="col-lg-12">
+            <!-- Trip Overview Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-light">
+                    <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-info-circle me-2"></i>Genel Bilgiler</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card mb-3">
+                                <div class="card-header bg-primary text-white py-2">
+                                    <h6 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Sefer Bilgileri</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <table class="table table-bordered table-sm">
+                                        <tr>
+                                            <th class="bg-light" width="30%">Müşteri</th>
+                                            <td>{{ sefer.firma.FirmaAdi }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light">Güzergah</th>
+                                                    <td>{{ sefer.baslangic_sehri.sehir_adi }}, {{ sefer.baslangic_ulkesi.ulke_adi }} → {{ sefer.bitis_sehri.sehir_adi }}, {{ sefer.bitis_ulkesi.ulke_adi }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light">Mesafe</th>
+                                                    <td>{{ sefer.mesafe|default:"-" }} km</td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light">Yük Bilgisi</th>
+                                            <td>{{ sefer.yuk_cinsi }}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                        <div class="col-md-6">
+                                            <table class="table table-bordered table-sm">
+                                                <tr>
+                                                    <th class="bg-light" width="30%">Araç Bilgisi</th>
+                                                    <td>{{ sefer.arac.plaka }} ({{ sefer.arac.arac_tipi }})</td>
+                                                </tr>
+                                                <tr>
+                                                    <th class="bg-light">Sürücü</th>
+                                                    <td>{{ sefer.personel.PerAd }} {{ sefer.personel.PerSoyad }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th class="bg-light">Çıkış - Varış</th>
+                                                    <td>{{ sefer.cikis_tarihi|date:"d.m.Y H:i" }} - {{ sefer.tahmini_varis_tarihi|date:"d.m.Y H:i"|default:"-" }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th class="bg-light">Durum</th>
+                                                    <td>
+                                                        <a href="#" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#durumGuncelleModal">
+                                                            <i class="fas fa-sync-alt"></i> Durum Güncelle
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                            
+                            {% if sefer.durum == 'Tamamlandı' and sefer.notlar %}
+                            <div class="alert alert-success border-left-success mt-3">
+                                <div class="d-flex">
+                                    <div class="me-3">
+                                        <i class="fas fa-check-circle fa-2x"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="font-weight-bold">Tamamlanma Notu:</h6>
+                                        <p class="mb-0">{{ sefer.notlar }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="card">
+                                <div class="card-header bg-success text-white py-2">
+                                    <h6 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Finansal Bilgiler</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <table class="table table-bordered table-sm">
+                                                <tr>
+                                                    <th class="bg-light" width="50%">Toplam Ücret</th>
+                                                    <td class="text-end fw-bold">{{ sefer.ucret|default:"0"|floatformat:2 }} EUR</td>
+                                                </tr>
+                                                <tr>
+                                                    <th class="bg-light">Toplam Masraf</th>
+                                                    <td class="text-end fw-bold">{{ toplam_masraf_eur|default:"0"|floatformat:2 }} EUR</td>
+                                                </tr>
+                                                <tr class="{% if kalan_butce < 0 %}table-danger{% else %}table-success{% endif %}">
+                                                    <th class="bg-light">Kalan Bütçe</th>
+                                                    <td class="text-end fw-bold">{{ kalan_butce|default:"0"|floatformat:2 }} EUR</td>
+                                                </tr>
+                                            </table>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="card h-100">
+                                                <div class="card-body">
+                                                    <p class="text-muted mb-2">Masraf Oranı</p>
+                                                    <div class="progress mb-2" style="height: 20px;">
+                                        {% if sefer.ucret and sefer.ucret > 0 %}
+                                                        {% with expense_percent=toplam_masraf_eur|default:0|floatformat:0 %}
+                                                        <div 
+                                                            class="progress-bar {% if expense_percent|add:'0' < 70 %}bg-success{% elif expense_percent|add:'0' < 90 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                                            role="progressbar" 
+                                                            style="width: {% widthratio toplam_masraf_eur|default:0 sefer.ucret 100 %}%;" 
+                                                            aria-valuenow="{% widthratio toplam_masraf_eur|default:0 sefer.ucret 100 %}" 
+                                                            aria-valuemin="0" 
+                                                            aria-valuemax="100">
+                                                            {% widthratio toplam_masraf_eur|default:0 sefer.ucret 100 %}%
+                                        </div>
+                                        {% endwith %}
+                                        {% else %}
+                                                        <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">
+                                            Bütçe belirlenmemiş
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    </div>
+                                    </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Related Invoices Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-file-invoice-dollar me-2"></i>İlgili Faturalar</h6>
+                    <div>
+                        <a href="{% url 'fatura_create' %}?sefer={{ sefer.id }}" class="btn btn-sm btn-success">
+                        <i class="fas fa-plus"></i> Fatura Ekle
+                    </a>
+                        <button class="btn btn-sm btn-outline-primary ms-2" id="exportFaturaExcel">
+                            <i class="fas fa-file-excel fa-sm"></i> Excel
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover" id="faturalarTable" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Fatura No</th>
+                                    <th>Firma</th>
+                                    <th>Tarih</th>
+                                    <th>Tür</th>
+                                    <th>Tutar</th>
+                                    <th>Ödeme Durumu</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if faturalar %}
+                                {% for fatura in faturalar %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'fatura_detail' fatura.id %}" class="fw-bold text-primary">
+                                            {{ fatura.FaturaNo }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'firma_detail' fatura.Firma.id %}" class="fw-bold text-primary">
+                                            {{ fatura.Firma.FirmaAdi }}
+                                        </a>
+                                    </td>
+                                    <td>{{ fatura.FaturaTarihi|date:"d.m.Y" }}</td>
+                                    <td>
+                                        <span class="badge {% if fatura.FaturaTipi == 'Satış' %}bg-success{% elif fatura.FaturaTipi == 'Alış' %}bg-danger{% else %}bg-info{% endif %} text-white">
+                                            {{ fatura.FaturaTipi }}
+                                        </span>
+                                    </td>
+                                    <td>{{ fatura.ToplamTutar }} EUR</td>
+                                    <td>
+                                        {% if fatura.OdemeDurumu == 'Ödendi' %}
+                                        <span class="badge bg-success">{{ fatura.OdemeDurumu }}</span>
+                                        {% elif fatura.OdemeDurumu == 'Kısmi Ödeme' %}
+                                        <span class="badge bg-warning">{{ fatura.OdemeDurumu }}</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">{{ fatura.OdemeDurumu }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="btn-group">
+                                            <a href="{% url 'fatura_detail' fatura.id %}" class="btn btn-sm btn-primary" title="Görüntüle">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                            <a href="{% url 'fatura_update' fatura.id %}" class="btn btn-sm btn-info" title="Düzenle">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                            <a href="{% url 'fatura_delete' fatura.id %}" class="btn btn-sm btn-danger" title="Sil">
+                                                <i class="fas fa-trash"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center py-4">
+                                        <div class="alert alert-info mb-0">
+                                            <i class="fas fa-info-circle me-2"></i> Bu sefere ait fatura bulunamadı.
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Expense List Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-list me-2"></i>Masraflar</h6>
+                    <div>
+                    {% if masraf_tipleri %}
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#masrafAnalizModal">
+                        <i class="fas fa-chart-pie"></i> Analiz
+                    </button>
+                    {% endif %}
+                        <a href="{% url 'masraf_list' %}?sefer={{ sefer.id }}" class="btn btn-sm btn-outline-info ms-2">
+                            <i class="fas fa-list-alt"></i> Tüm Masraflar
+                        </a>
+                        <a href="{% url 'masraf_create' %}?sefer={{ sefer.id }}" class="btn btn-sm btn-success ms-2">
+                            <i class="fas fa-plus"></i> Masraf Ekle
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover" id="masraflarTable" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Tip</th>
+                                    <th>Açıklama</th>
+                                    <th>Tutar</th>
+                                    <th>Kasa</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if masraflar %}
+                                {% for masraf in masraflar %}
+                                <tr>
+                                    <td>{{ masraf.Tarih|date:"d.m.Y" }}</td>
+                                    <td>
+                                        <span class="badge {% if masraf.MasrafTipi == 'Yakıt' %}bg-danger{% elif masraf.MasrafTipi == 'Geçiş' %}bg-warning{% elif masraf.MasrafTipi == 'Konaklama' %}bg-info{% elif masraf.MasrafTipi == 'Yemek' %}bg-success{% else %}bg-secondary{% endif %} text-white">
+                                            {{ masraf.MasrafTipi }}
+                                        </span>
+                                    </td>
+                                    <td>{{ masraf.Aciklama|default:"-" }}</td>
+                                    <td>
+                                        <div>{{ masraf.Tutar }} {{ masraf.ParaBirimi }}</div>
+                                        <small class="text-muted">{{ masraf.TutarEUR }} EUR</small>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'kasa_detail' masraf.Kasa.id %}" class="fw-bold text-primary">
+                                            {{ masraf.Kasa.kasa_adi }}
+                                        </a>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="btn-group">
+                                            <a href="{% url 'masraf_update' masraf.id %}" class="btn btn-sm btn-info" title="Düzenle">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                        <form method="post" action="{% url 'masraf_sil' masraf.id %}" class="d-inline" onsubmit="return confirm('Bu masrafı silmek istediğinize emin misiniz?');">
+                                            {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-danger" title="Masrafı Sil">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="alert alert-info mb-0">
+                                            <i class="fas fa-info-circle me-2"></i> Bu sefere ait masraf bulunamadı.
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                            {% if masraflar %}
+                            <tfoot>
+                                <tr class="fw-bold">
+                                    <td colspan="3" class="text-end">Toplam:</td>
+                                    <td colspan="3">{{ toplam_masraf_eur|floatformat:2 }} EUR</td>
+                                </tr>
+                            </tfoot>
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Masraf Analiz Modal -->
+<div class="modal fade" id="masrafAnalizModal" tabindex="-1" aria-labelledby="masrafAnalizModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="masrafAnalizModalLabel">Masraf Analizi</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="chart-container" style="position: relative; height:300px;">
+                            <canvas id="masrafAnalizChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0">Masraf Dağılımı</h6>
+                            </div>
+                            <div class="card-body p-0">
+                                <table class="table table-sm table-bordered mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Masraf Tipi</th>
+                                            <th class="text-end">Tutar (EUR)</th>
+                                            <th class="text-end">%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                        {% for tip in masraf_tipleri %}
+                                        <tr>
+                                            <td>{{ tip.MasrafTipi }}</td>
+                                            <td class="text-end">{{ tip.toplam|floatformat:2 }}</td>
+                                            <td class="text-end">{% widthratio tip.toplam toplam_masraf_eur|default:1 100 %}%</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                                    <tfoot>
+                                        <tr class="fw-bold">
+                                            <td>Toplam</td>
+                                            <td class="text-end">{{ toplam_masraf_eur|floatformat:2 }}</td>
+                                            <td class="text-end">100%</td>
+                                        </tr>
+                                    </tfoot>
+                        </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="{% url 'sefer_masraf_analiz_pdf' sefer.id %}" target="_blank" class="btn btn-primary me-2">
+                    <i class="fas fa-file-pdf me-1"></i> PDF İndir
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Durum Güncelle Modal -->
+<div class="modal fade" id="durumGuncelleModal" tabindex="-1" aria-labelledby="durumGuncelleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="durumGuncelleModalLabel">Sefer Durumu Güncelle</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'sefer_update_status' sefer.id %}" class="needs-validation" novalidate>
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Sefer Durumu</label>
+                        <select name="durum" class="form-select" id="durumSelect" required>
+                            <option value="Aktif" {% if sefer.durum == 'Aktif' %}selected{% endif %}>Aktif</option>
+                            <option value="Tamamlandı" {% if sefer.durum == 'Tamamlandı' %}selected{% endif %}>Tamamlandı</option>
+                            <option value="İptal Edildi" {% if sefer.durum == 'İptal Edildi' %}selected{% endif %}>İptal Edildi</option>
+                        </select>
+                        <div class="invalid-feedback">Lütfen bir durum seçin</div>
+                    </div>
+                    
+                    <div class="mb-3 completion-fields">
+                        <label class="form-label">Varış Tarihi</label>
+                        <input type="datetime-local" name="varis_tarihi" class="form-control" value="{{ sefer.varis_tarihi|date:'Y-m-d\TH:i' }}">
+                        <small class="form-text text-muted">Sefer tamamlandığında varış tarihini belirtin</small>
+                    </div>
+                    
+                    <div class="mb-3 completion-fields">
+                        <label class="form-label">Bitiş Kilometresi</label>
+                        <input type="number" name="bitis_km" class="form-control" value="{{ sefer.bitis_km|default:'' }}" min="{{ sefer.baslangic_km|default:0 }}">
+                        <small class="form-text text-muted">Sefer sonundaki kilometre değerini girin (Başlangıç: {{ sefer.baslangic_km|default:0 }} km)</small>
+                        <small class="form-text text-muted">Not: Sefer tamamlandığında araç kilometre değeri bu değere göre güncellenecektir.</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Notlar</label>
+                        <textarea name="notlar" class="form-control" rows="3" placeholder="Güncelleme hakkında ek notlar...">{{ sefer.notlar }}</textarea>
+                    </div>
+                    
+                    <div class="modal-footer px-0 pb-0">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Kaydet
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Form validation
+    document.addEventListener('DOMContentLoaded', function() {
+        // Form doğrulama
+        (function() {
+            'use strict';
+            var forms = document.getElementsByClassName('needs-validation');
+            Array.prototype.filter.call(forms, function(form) {
+                form.addEventListener('submit', function(event) {
+                    if (form.checkValidity() === false) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                    form.classList.add('was-validated');
+                }, false);
+            });
+        })();
+        
+        // Status update modal functionality
+        function toggleCompletionFields() {
+            var durumValue = $('#durumSelect').val();
+            var completionFields = $('.completion-fields');
+            
+            if (durumValue === 'Tamamlandı') {
+                completionFields.show();
+            } else {
+                completionFields.hide();
+            }
+        }
+        
+        // Initial state
+        $('#durumGuncelleModal').on('shown.bs.modal', function() {
+            toggleCompletionFields();
+        });
+        
+        // On change
+        $('#durumSelect').change(function() {
+            toggleCompletionFields();
+        });
+        
+        // Masraf analiz modal
+        $('#masrafAnalizModal').on('show.bs.modal', function() {
+            var data = {{ masraf_data|safe }};
+            console.log("[CHART] Masraf data:", data);
+            renderMasrafChart(data);
+        });
+    });
+    
+    // Helper function to generate random colors
+    function generateRandomColors(count) {
+        const colors = [
+            '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+            '#5a5c69', '#6f42c1', '#fd7e14', '#20c9a6', '#6610f2'
+        ];
+        
+        // If we need more colors than in our predefined list, generate random ones
+        if (count > colors.length) {
+            for (let i = colors.length; i < count; i++) {
+                const r = Math.floor(Math.random() * 255);
+                const g = Math.floor(Math.random() * 255);
+                const b = Math.floor(Math.random() * 255);
+                colors.push(`rgb(${r}, ${g}, ${b})`);
+            }
+        }
+        
+        return colors.slice(0, count);
+    }
+
+    // Render masraf chart function
+    function renderMasrafChart(data) {
+        if (!data || !document.getElementById('masrafAnalizChart')) return;
+        
+        const ctx = document.getElementById('masrafAnalizChart').getContext('2d');
+        const labels = data.labels || [];
+        const values = data.values || [];
+        const colors = generateRandomColors(labels.length);
+        
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                    },
+                    title: {
+                        display: true,
+                        text: 'Masraf Dağılımı (EUR)'
+                    }
+                }
+            }
+        });
+    }
+</script>
+{% endblock %} 

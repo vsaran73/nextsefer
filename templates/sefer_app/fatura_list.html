@@ -1,0 +1,389 @@
+{% extends 'sefer_app/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Faturalar - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}Faturalar{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Faturalar</h1>
+        <div>
+            <a href="{% url 'fatura_list' %}?export=pdf{% if request.GET.fatura_tipi %}&fatura_tipi={{ request.GET.fatura_tipi }}{% endif %}{% if request.GET.durum %}&durum={{ request.GET.durum }}{% endif %}{% if request.GET.firma %}&firma={{ request.GET.firma }}{% endif %}{% if request.GET.baslangic_tarihi %}&baslangic_tarihi={{ request.GET.baslangic_tarihi }}{% endif %}{% if request.GET.bitis_tarihi %}&bitis_tarihi={{ request.GET.bitis_tarihi }}{% endif %}" class="btn btn-sm btn-info shadow-sm me-2">
+                <i class="fas fa-file-pdf fa-sm text-white-50 me-1"></i> PDF
+            </a>
+            <a href="{% url 'fatura_create' %}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-plus fa-sm text-white-50 me-1"></i> Yeni Fatura
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtreleme Kartı -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Filtreler</h6>
+            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
+        <div class="collapse" id="filterCollapse">
+        <div class="card-body">
+            <form method="get" action="{% url 'fatura_list' %}">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Fatura Tipi</label>
+                        <select name="fatura_tipi" class="form-select select2 fatura-tipi-select" id="faturaTipiSelect">
+                            <option value="" data-color="#6c757d">Tümü</option>
+                            <option value="Alış" data-color="#17a2b8" {% if request.GET.fatura_tipi == 'Alış' %}selected{% endif %}>Alış</option>
+                            <option value="Satış" data-color="#28a745" {% if request.GET.fatura_tipi == 'Satış' %}selected{% endif %}>Satış</option>
+                            <option value="Nakliye" data-color="#007bff" {% if request.GET.fatura_tipi == 'Nakliye' %}selected{% endif %}>Nakliye</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Cari</label>
+                        <select name="firma" class="form-select select2">
+                            <option value="">Tümü</option>
+                            {% for firma in firmalar %}
+                            <option value="{{ firma.id }}" {% if request.GET.firma == firma.id|stringformat:"i" %}selected{% endif %}>{{ firma.FirmaAdi }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Başlangıç Tarihi</label>
+                        <input type="text" name="baslangic_tarihi" class="form-control datepicker" value="{{ request.GET.baslangic_tarihi }}" placeholder="Başlangıç tarihi">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Bitiş Tarihi</label>
+                        <input type="text" name="bitis_tarihi" class="form-control datepicker" value="{{ request.GET.bitis_tarihi }}" placeholder="Bitiş tarihi">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">Filtrele</button>
+                    </div>
+                </div>
+            </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fatura Tablosu -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Fatura Listesi</h6>
+            
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-outline-primary active" data-filter="all">Tümü</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-filter="Alış">Alış</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-filter="Satış">Satış</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-filter="Nakliye">Nakliye</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" data-filter="Kısmi Ödeme">Kısmi Ödeme</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" data-filter="Ödenmedi">Ödenmedi</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Fatura No</th>
+                            <th>Tip</th>
+                            <th>Cari</th>
+                            <th>Tarih</th>
+                            <th>Vade</th>
+                            <th>Toplam</th>
+                            <th>Ödenen</th>
+                            <th>Durum</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fatura in faturalar %}
+                        <tr class="fatura-row" data-type="{{ fatura.FaturaTipi }}" data-status="{{ fatura.OdemeDurumu }}">
+                            <td>
+                                <a href="{% url 'fatura_detail' fatura.id %}" class="fw-bold text-primary">
+                                    {{ fatura.FaturaNo }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if fatura.FaturaTipi == "Alış" %}
+                                    <span class="badge bg-info">{{ fatura.FaturaTipi }}</span>
+                                {% elif fatura.FaturaTipi == "Satış" %}
+                                    <span class="badge bg-success">{{ fatura.FaturaTipi }}</span>
+                                {% else %}
+                                    <span class="badge bg-primary">{{ fatura.FaturaTipi }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'firma_detail' fatura.Firma.id %}" class="text-primary">
+                                    {{ fatura.Firma.FirmaAdi }}
+                                </a>
+                            </td>
+                            <td>{{ fatura.FaturaTarihi|date:"d.m.Y" }}</td>
+                            <td>
+                                {{ fatura.VadeTarihi|date:"d.m.Y" }}
+                                {% if fatura.OdemeDurumu != "Ödendi" and fatura.VadeTarihi %}
+                                    {% with days_left=fatura.VadeTarihi|days_until %}
+                                        {% if days_left is not None %}
+                                            <span class="{{ days_left|due_date_color }}">
+                                                {% if days_left < 0 %}
+                                                    ({{ days_left|abs_value }} gün geçti)
+                                                {% else %}
+                                                    ({{ days_left }} gün kaldı)
+                                                {% endif %}
+                                            </span>
+                                        {% endif %}
+                                    {% endwith %}
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ fatura.ToplamTutar }} EUR</td>
+                            <td class="text-end">{{ fatura.OdenenTutar }} EUR</td>
+                            <td>
+                                {% if fatura.OdemeDurumu == "Ödendi" %}
+                                    <span class="badge bg-success">{{ fatura.OdemeDurumu }}</span>
+                                {% elif fatura.OdemeDurumu == "Kısmi Ödeme" %}
+                                    <span class="badge bg-warning">{{ fatura.OdemeDurumu }}</span>
+                                {% else %}
+                                    <span class="badge bg-danger">{{ fatura.OdemeDurumu }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{% url 'fatura_detail' fatura.id %}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <a href="{% url 'fatura_update' fatura.id %}" class="btn btn-sm btn-warning">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteFaturaModal{{ fatura.id }}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+
+                                <!-- Delete Modal -->
+                                <div class="modal fade" id="deleteFaturaModal{{ fatura.id }}" tabindex="-1" aria-labelledby="deleteFaturaModalLabel{{ fatura.id }}" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="deleteFaturaModalLabel{{ fatura.id }}">Fatura Sil</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <p><strong>{{ fatura.FaturaNo }}</strong> numaralı faturayı silmek istediğinize emin misiniz?</p>
+                                                <p class="text-danger">Bu işlem geri alınamaz!</p>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                                                <a href="{% url 'fatura_delete' fatura.id %}" class="btn btn-danger">Faturayı Sil</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center">Fatura kaydı bulunamadı.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Özet Bilgiler -->
+    <div class="row">
+        <div class="col-xl-6 col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Özet</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Fatura Tipi</th>
+                                    <th>Adet</th>
+                                    <th>Toplam Tutar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Alış Faturaları</td>
+                                    <td>{{ alis_fatura_sayisi }}</td>
+                                    <td class="text-end">{{ alis_fatura_toplam_eur }} EUR</td>
+                                </tr>
+                                <tr>
+                                    <td>Satış Faturaları</td>
+                                    <td>{{ satis_fatura_sayisi }}</td>
+                                    <td class="text-end">{{ satis_fatura_toplam_eur }} EUR</td>
+                                </tr>
+                                <tr>
+                                    <td>Nakliye Faturaları</td>
+                                    <td>{{ nakliye_fatura_sayisi }}</td>
+                                    <td class="text-end">{{ nakliye_fatura_toplam_eur }} EUR</td>
+                                </tr>
+                                <tr class="table-primary">
+                                    <th>Toplam</th>
+                                    <th>{{ toplam_fatura_sayisi }}</th>
+                                    <th class="text-end">{{ toplam_fatura_tutar_eur }} EUR</th>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6 col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Ödeme Durumu</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Ödeme Durumu</th>
+                                    <th>Adet</th>
+                                    <th>Oran</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div style="background-color:#1cc88a; width:15px; height:15px; border-radius:50%; margin-right:8px;"></div>
+                                            <span>Ödendi</span>
+                            </div>
+                                    </td>
+                                    <td>{{ odenen_sayi }}</td>
+                                    <td>{% widthratio odenen_sayi toplam_fatura_sayisi 100 %}%</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div style="background-color:#f6c23e; width:15px; height:15px; border-radius:50%; margin-right:8px;"></div>
+                                            <span>Kısmi Ödeme</span>
+                            </div>
+                                    </td>
+                                    <td>{{ kismi_odenen_sayi }}</td>
+                                    <td>{% widthratio kismi_odenen_sayi toplam_fatura_sayisi 100 %}%</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div style="background-color:#e74a3b; width:15px; height:15px; border-radius:50%; margin-right:8px;"></div>
+                                            <span>Ödenmedi</span>
+                            </div>
+                                    </td>
+                                    <td>{{ odenmemis_sayi }}</td>
+                                    <td>{% widthratio odenmemis_sayi toplam_fatura_sayisi 100 %}%</td>
+                                </tr>
+                                <tr class="table-primary">
+                                    <th>Toplam</th>
+                                    <th>{{ toplam_fatura_sayisi }}</th>
+                                    <th>100%</th>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    $(document).ready(function() {
+        // Select2 için yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: {
+                    shorthand: ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct'],
+                    longhand: ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+                },
+                months: {
+                    shorthand: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+                    longhand: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+                }
+            }
+        });
+
+        // Fatura tip renklerini seçeneklere uygulamak için
+        $("#faturaTipiSelect").on("select2:select", function(e) {
+            var data = e.params.data;
+            var color = $(data.element).data('color');
+            var $container = $(this).next('.select2-container').find('.select2-selection__rendered');
+            $container.css('color', color);
+        });
+
+        // Başlangıçta seçili değerin rengini ayarla
+        var selectedOption = $("#faturaTipiSelect option:selected");
+        if (selectedOption.length > 0) {
+            var color = selectedOption.data('color');
+            var $container = $("#faturaTipiSelect").next('.select2-container').find('.select2-selection__rendered');
+            $container.css('color', color);
+        }
+        
+        // Fatura filtreleme
+        $('.btn-group[role="group"] button').on('click', function() {
+            var filter = $(this).data('filter');
+            
+            $('.btn-group[role="group"] button').removeClass('active');
+            $(this).addClass('active');
+            
+            if (filter === 'all') {
+                $('.fatura-row').show();
+            } else if (filter === 'Ödenmedi') {
+                $('.fatura-row').hide();
+                $('.fatura-row[data-status="Ödenmedi"]').show();
+            } else if (filter === 'Kısmi Ödeme') {
+                $('.fatura-row').hide();
+                $('.fatura-row[data-status="Kısmi Ödeme"]').show();
+            } else {
+                $('.fatura-row').hide();
+                $('.fatura-row[data-type="' + filter + '"]').show();
+            }
+        });
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,175 @@
+{% extends 'sefer_app/base.html' %}
+{% load static %}
+
+{% block title %}Kullanıcı Profili{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Profil Bilgileri</h5>
+                </div>
+                <div class="card-body text-center">
+                    {% if profile.profile_picture %}
+                    <img src="{{ profile.profile_picture.url }}" alt="{{ user.username }}" 
+                         class="rounded-circle img-thumbnail mb-3" style="width: 150px; height: 150px; object-fit: cover;">
+                    {% else %}
+                    <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center mx-auto mb-3"
+                         style="width: 150px; height: 150px; font-size: 48px;">
+                        {{ user.username|first|upper }}
+                    </div>
+                    {% endif %}
+                    <h4>{{ user.get_full_name|default:user.username }}</h4>
+                    {% if profile.position %}<p class="text-muted">{{ profile.position }}</p>{% endif %}
+                    <hr>
+                    <div class="text-left">
+                        <p><strong>Kullanıcı Adı:</strong> {{ user.username }}</p>
+                        {% if user.email %}<p><strong>E-posta:</strong> {{ user.email }}</p>{% endif %}
+                        {% if profile.phone_number %}<p><strong>Telefon:</strong> {{ profile.phone_number }}</p>{% endif %}
+                        <p><strong>Üyelik Tarihi:</strong> {{ profile.date_joined|date:"d.m.Y" }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Profil Düzenle</h5>
+                </div>
+                <div class="card-body">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                    
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.first_name.id_for_label }}">Ad</label>
+                                {{ form.first_name }}
+                                {% if form.first_name.errors %}
+                                    <div class="invalid-feedback d-block">{{ form.first_name.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.last_name.id_for_label }}">Soyad</label>
+                                {{ form.last_name }}
+                                {% if form.last_name.errors %}
+                                    <div class="invalid-feedback d-block">{{ form.last_name.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.email.id_for_label }}">E-posta</label>
+                            {{ form.email }}
+                            {% if form.email.errors %}
+                                <div class="invalid-feedback d-block">{{ form.email.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.position.id_for_label }}">Pozisyon</label>
+                            {{ form.position }}
+                            {% if form.position.errors %}
+                                <div class="invalid-feedback d-block">{{ form.position.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.phone_number.id_for_label }}">Telefon Numarası</label>
+                            {{ form.phone_number }}
+                            {% if form.phone_number.errors %}
+                                <div class="invalid-feedback d-block">{{ form.phone_number.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.date_of_birth.id_for_label }}">Doğum Tarihi</label>
+                            {{ form.date_of_birth }}
+                            {% if form.date_of_birth.errors %}
+                                <div class="invalid-feedback d-block">{{ form.date_of_birth.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.address.id_for_label }}">Adres</label>
+                            {{ form.address }}
+                            {% if form.address.errors %}
+                                <div class="invalid-feedback d-block">{{ form.address.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.profile_picture.id_for_label }}">Profil Resmi</label>
+                            {% if profile.profile_picture %}
+                                <div class="mb-2">
+                                    <img src="{{ profile.profile_picture.url }}" alt="Current profile picture" class="profile-image-preview">
+                                </div>
+                            {% endif %}
+                            {{ form.profile_picture }}
+                            {% if form.profile_picture.errors %}
+                                <div class="invalid-feedback d-block">{{ form.profile_picture.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <button type="submit" name="update_profile" class="btn btn-primary">Profili Güncelle</button>
+                    </form>
+                </div>
+            </div>
+            <div class="card mb-4">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="card-title mb-0">Kullanıcı Adı Değiştir</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ username_form.username.label_tag }}
+                        {{ username_form.username }}
+                        {% if username_form.username.errors %}
+                            <div class="invalid-feedback d-block">{{ username_form.username.errors }}</div>
+                        {% endif %}
+                        <button type="submit" name="change_username" class="btn btn-warning mt-2">Kullanıcı Adını Değiştir</button>
+                    </form>
+                </div>
+            </div>
+            <div class="card mb-4">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="card-title mb-0">Şifre Değiştir</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ password_form.old_password.label_tag }}
+                        {{ password_form.old_password }}
+                        {% if password_form.old_password.errors %}
+                            <div class="invalid-feedback d-block">{{ password_form.old_password.errors }}</div>
+                        {% endif %}
+                        {{ password_form.new_password1.label_tag }}
+                        {{ password_form.new_password1 }}
+                        {% if password_form.new_password1.errors %}
+                            <div class="invalid-feedback d-block">{{ password_form.new_password1.errors }}</div>
+                        {% endif %}
+                        {{ password_form.new_password2.label_tag }}
+                        {{ password_form.new_password2 }}
+                        {% if password_form.new_password2.errors %}
+                            <div class="invalid-feedback d-block">{{ password_form.new_password2.errors }}</div>
+                        {% endif %}
+                        <button type="submit" name="change_password" class="btn btn-danger mt-2">Şifreyi Değiştir</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

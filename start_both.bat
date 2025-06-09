@@ -1,0 +1,13 @@
+@echo off
+echo NextSefer uygulaması başlatılıyor...
+
+echo 1. Django sunucusu başlatılıyor...
+start "Django Server" cmd /c "cd /d %~dp0\python_dist && python run_app.py"
+
+echo 2. Django sunucusunun başlaması için 10 saniye bekleniyor...
+ping 127.0.0.1 -n 10 > nul
+
+echo 3. Electron uygulaması başlatılıyor...
+npm start
+
+echo 4. İşlem tamamlandı. 

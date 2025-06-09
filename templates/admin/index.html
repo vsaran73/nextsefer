@@ -1,0 +1,24 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="dashboard-header dashboard-card">
+    <h2>Sistem Yönetimi</h2>
+    <p>Sefer Yönetim Sistemi yönetim ekranına hoş geldiniz. Bu arayüzden sistem ayarlarını ve kullanıcı profillerini yönetebilirsiniz.</p>
+</div>
+
+<!-- User Profiles Section -->
+<div class="dashboard-card">
+    <h3>Kullanıcı Profilleri</h3>
+    <p>Sistem kullanıcılarının bilgilerini ve profillerini bu bölümden yönetebilirsiniz.</p>
+    <div class="actions">
+        <a href="{% url 'admin:auth_user_changelist' %}" class="button">Tüm Kullanıcıları Görüntüle</a>
+        <a href="{% url 'admin:auth_user_add' %}" class="button">Yeni Kullanıcı Ekle</a>
+        {% if user.is_authenticated %}
+        <a href="javascript:void(0);" onclick="window.location.href='/profile/'" class="button default">Profilimi Düzenle</a>
+        {% endif %}
+    </div>
+</div>
+
+{{ block.super }}
+{% endblock %} 

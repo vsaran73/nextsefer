@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextSefer Yükleniyor...</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            color: #333;
+        }
+        .loader-container {
+            text-align: center;
+            padding: 30px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            color: #555;
+            min-height: 80px;
+        }
+        .logo {
+            max-width: 200px;
+            margin-bottom: 20px;
+        }
+        #status-message {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        #status-detail {
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        .log-container {
+            max-height: 150px;
+            overflow-y: auto;
+            margin-top: 20px;
+            text-align: left;
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            font-size: 0.85em;
+        }
+        .log-entry {
+            margin: 2px 0;
+            line-height: 1.3;
+            color: #666;
+        }
+        .error {
+            color: #e74c3c;
+        }
+        .success {
+            color: #2ecc71;
+        }
+        .info {
+            color: #3498db;
+        }
+        .timeout-info {
+            margin-top: 30px;
+            font-size: 0.85em;
+            color: #e67e22;
+            display: none;
+        }
+        .retry-button {
+            display: none;
+            margin-top: 15px;
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .retry-button:hover {
+            background-color: #2980b9;
+        }
+        .update-info {
+            margin-top: 15px;
+            font-size: 13px;
+            color: #2980b9;
+        }
+        .progress-bar-container {
+            width: 100%;
+            height: 10px;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            margin-top: 10px;
+            overflow: hidden;
+            display: none;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div class="loader-container">
+        <h1>NextSefer</h1>
+        <div class="loader"></div>
+        <div class="status">
+            <p id="status-message">Django sunucusu başlatılıyor...</p>
+            <p id="status-detail">Bu işlem ilk açılışta biraz zaman alabilir</p>
+        </div>
+        <div class="update-info" id="update-info"></div>
+        <div class="progress-bar-container" id="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div class="log-container" id="log-messages">
+            <!-- Log mesajları buraya eklenecek -->
+        </div>
+        <p class="timeout-info" id="timeout-info">
+            Sunucu başlatılırken zaman aşımı meydana geldi. Lütfen uygulamayı kapatıp tekrar açın veya tekrar deneyin.
+        </p>
+        <button class="retry-button" id="retry-button">Tekrar Dene</button>
+    </div>
+
+    <script>
+        // Status mesajlarını güncelleme
+        const statusMessage = document.getElementById('status-message');
+        const statusDetail = document.getElementById('status-detail');
+        const logContainer = document.getElementById('log-messages');
+        const timeoutInfo = document.getElementById('timeout-info');
+        const retryButton = document.getElementById('retry-button');
+        const updateInfoEl = document.getElementById('update-info');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        
+        // Zaman aşımı kontrolü
+        let timeoutTimer = setTimeout(() => {
+            timeoutInfo.style.display = 'block';
+            retryButton.style.display = 'inline-block';
+            statusMessage.textContent = 'Bağlantı zaman aşımına uğradı';
+            statusDetail.textContent = 'Django sunucusuna bağlanılamadı';
+            addLogMessage('Bağlantı zaman aşımına uğradı', 'error');
+        }, 30000); // 30 saniye zaman aşımı
+        
+        // Log mesajı ekleme fonksiyonu
+        function addLogMessage(message, type = '') {
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.textContent = message;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+        
+        // Örnek log mesajları
+        addLogMessage('Yükleme başlatıldı...', 'info');
+        addLogMessage('Django sunucusu hazırlanıyor...', 'info');
+        
+        // IPC mesajlarını dinle (Preload.js üzerinden)
+        if (window.electronAPI && window.electronAPI.onLogMessage) {
+            window.electronAPI.onLogMessage((message) => {
+                // Log mesajlarını analiz et ve durumu güncelle
+                addLogMessage(message);
+                
+                if (message.includes('Django server is ready') || message.includes('Django server started successfully')) {
+                    statusMessage.textContent = 'Django sunucusu hazır';
+                    statusDetail.textContent = 'Uygulama yükleniyor...';
+                    addLogMessage('Django sunucusu başlatıldı!', 'success');
+                    clearTimeout(timeoutTimer);
+                } else if (message.includes('Loading Django application')) {
+                    statusMessage.textContent = 'Uygulama yükleniyor';
+                    statusDetail.textContent = 'Neredeyse hazır...';
+                } else if (message.includes('ERROR') || message.includes('Error') || message.includes('failed')) {
+                    statusMessage.textContent = 'Hata oluştu';
+                    statusDetail.textContent = 'Lütfen hata mesajlarını kontrol edin';
+                    addLogMessage('Bir hata meydana geldi', 'error');
+                }
+            });
+        }
+        
+        // Tekrar deneme butonu
+        retryButton.addEventListener('click', () => {
+            timeoutInfo.style.display = 'none';
+            retryButton.style.display = 'none';
+            statusMessage.textContent = 'Tekrar deneniyor...';
+            statusDetail.textContent = 'Django sunucusuna bağlanmaya çalışılıyor';
+            addLogMessage('Manuel olarak tekrar bağlanmaya çalışılıyor...', 'info');
+            
+            // Ana süreçten reloading tetikle
+            if (window.electronAPI && window.electronAPI.retryConnection) {
+                window.electronAPI.retryConnection();
+            }
+        });
+
+        // Güncelleme ilerleme bilgisini dinle
+        if (window.electronAPI && window.electronAPI.onUpdateProgress) {
+            window.electronAPI.onUpdateProgress((progressObj) => {
+                updateInfoEl.textContent = `Güncelleme indiriliyor: ${Math.round(progressObj.percent)}%`;
+                progressContainer.style.display = 'block';
+                progressBar.style.width = `${progressObj.percent}%`;
+            });
+        }
+    </script>
+</body>
+</html> 

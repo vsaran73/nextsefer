@@ -1,0 +1,415 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Masraf Listesi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="fas fa-money-bill-wave me-2"></i> Masraf Listesi
+            </h1>
+            <p class="text-muted mb-0">Tüm masrafların listesi</p>
+        </div>
+        <div class="btn-group">
+            <a href="{% url 'masraf_create' %}" class="btn btn-success">
+                <i class="fas fa-plus"></i> Yeni Masraf
+            </a>
+            <a href="{% url 'index' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Ana Sayfaya Dön
+            </a>
+        </div>
+    </div>
+    
+    <!-- Filters Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-filter me-2"></i>Filtreler</h6>
+        </div>
+        <div class="card-body">
+            <form method="get" action="{% url 'masraf_list' %}">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Masraf Tipi</label>
+                        <select name="masraf_tipi" class="form-control select2">
+                            <option value="">Tümü</option>
+                            {% for tip in masraf_tipleri %}
+                            <option value="{{ tip }}" {% if masraf_tipi_filtre == tip %}selected{% endif %}>{{ tip }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Kasa</label>
+                        <select name="kasa" class="form-control select2">
+                            <option value="">Tümü</option>
+                            {% for kasa in kasalar %}
+                            <option value="{{ kasa.id }}" {% if kasa_filtre == kasa.id|stringformat:"i" %}selected{% endif %}>{{ kasa.kasa_adi }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Sefer</label>
+                        <select name="sefer" class="form-control select2">
+                            <option value="">Tümü</option>
+                            {% for sefer in seferler %}
+                            <option value="{{ sefer.id }}" {% if sefer_filtre == sefer.id|stringformat:"i" %}selected{% endif %}>{{ sefer.sefer_kodu }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Toplam Tutar (EUR)</label>
+                        <div class="form-control bg-light">{{ toplam_masraf_eur|floatformat:2 }} EUR</div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Başlangıç Tarihi</label>
+                        <input type="text" name="baslangic_tarihi" class="form-control datepicker" value="{{ baslangic_tarihi_filtre }}">
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Bitiş Tarihi</label>
+                        <input type="text" name="bitis_tarihi" class="form-control datepicker" value="{{ bitis_tarihi_filtre }}">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3 d-flex align-items-end">
+                        <div class="btn-group w-100">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i> Filtrele
+                            </button>
+                            <a href="{% url 'masraf_list' %}" class="btn btn-secondary">
+                                <i class="fas fa-broom"></i> Temizle
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Charts Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-chart-pie me-2"></i>Özet Grafikler</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <!-- Expense by Type Chart -->
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-header py-2">
+                            <h6 class="m-0 font-weight-bold text-primary">Masraf Türüne Göre</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" style="position: relative; height:250px;">
+                                <canvas id="masrafByTypeChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Expense by Month Chart -->
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-header py-2">
+                            <h6 class="m-0 font-weight-bold text-primary">Aylara Göre</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" style="position: relative; height:250px;">
+                                <canvas id="masrafByMonthChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Expense by Cash Register Chart -->
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-header py-2">
+                            <h6 class="m-0 font-weight-bold text-primary">Kasalara Göre</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" style="position: relative; height:250px;">
+                                <canvas id="masrafByKasaChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Expense List Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-list me-2"></i>Masraf Listesi</h6>
+            <a href="{% url 'masraf_create' %}" class="btn btn-sm btn-success">
+                <i class="fas fa-plus"></i> Yeni Masraf
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-bordered table-hover" id="masrafTable">
+                    <thead>
+                        <tr>
+                            <th>Tarih</th>
+                            <th>Sefer</th>
+                            <th>Masraf Tipi</th>
+                            <th>Tutar</th>
+                            <th>Euro Karşılığı</th>
+                            <th>Kasa</th>
+                            <th>Açıklama</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if masraflar %}
+                        {% for masraf in masraflar %}
+                        <tr>
+                            <td>{{ masraf.Tarih|date:"d.m.Y" }}</td>
+                            <td>
+                                {% if masraf.Sefer %}
+                                <a href="{% url 'sefer_detail' masraf.Sefer.id %}">{{ masraf.Sefer.sefer_kodu }}</a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>{{ masraf.MasrafTipi }}</td>
+                            <td>{{ masraf.Tutar }} {{ masraf.ParaBirimi }}</td>
+                            <td>{{ masraf.TutarEUR }} EUR</td>
+                            <td>
+                                {% if masraf.Kasa %}
+                                <a href="{% url 'kasa_detail' masraf.Kasa.id %}">{{ masraf.Kasa.kasa_adi }}</a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>{{ masraf.Aciklama|default:"-" }}</td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{% url 'masraf_update' masraf.id %}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <form method="post" action="{% url 'masraf_sil' masraf.id %}" class="d-inline" onsubmit="return confirm('Bu masrafı silmek istediğinize emin misiniz?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4">Masraf bulunamadı</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    $(document).ready(function() {
+        // Initialize Select2
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Initialize Flatpickr
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: {
+                    shorthand: ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct'],
+                    longhand: ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+                },
+                months: {
+                    shorthand: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+                    longhand: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+                }
+            }
+        });
+
+        $('#masrafTable').DataTable({
+            order: [[0, 'desc']],
+            language: {
+                url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/tr.json'
+            }
+        });
+        
+        // Chart colors
+        const colors = [
+            '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', 
+            '#6f42c1', '#fd7e14', '#20c9a6', '#858796', '#5a5c69'
+        ];
+        
+        // Masraf by Type Chart
+        const typeCtx = document.getElementById('masrafByTypeChart');
+        if (typeCtx) {
+            const typeChart = new Chart(typeCtx.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: [
+                        {% for item in masraf_by_type %}
+                        '{{ item.MasrafTipi }}',
+                        {% endfor %}
+                    ],
+                    datasets: [{
+                        data: [
+                            {% for item in masraf_by_type %}
+                            {{ item.toplam }},
+                            {% endfor %}
+                        ],
+                        backgroundColor: colors,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                boxWidth: 12
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    return `${label}: ${value.toFixed(2)} EUR`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Masraf by Month Chart
+        const monthCtx = document.getElementById('masrafByMonthChart');
+        if (monthCtx) {
+            const monthChart = new Chart(monthCtx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: [
+                        {% for item in masraf_by_month %}
+                        '{{ item.month_name }}',
+                        {% endfor %}
+                    ],
+                    datasets: [{
+                        label: 'Masraf (EUR)',
+                        data: [
+                            {% for item in masraf_by_month %}
+                            {{ item.total }},
+                            {% endfor %}
+                        ],
+                        backgroundColor: '#4e73df',
+                        borderColor: '#3a5cbe',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Masraf by Kasa Chart
+        const kasaCtx = document.getElementById('masrafByKasaChart');
+        if (kasaCtx) {
+            const kasaChart = new Chart(kasaCtx.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: [
+                        {% for item in masraf_by_kasa %}
+                        '{{ item.Kasa__kasa_adi }}',
+                        {% endfor %}
+                    ],
+                    datasets: [{
+                        data: [
+                            {% for item in masraf_by_kasa %}
+                            {{ item.toplam }},
+                            {% endfor %}
+                        ],
+                        backgroundColor: colors,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                boxWidth: 12
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    return `${label}: ${value.toFixed(2)} EUR`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
+{% endblock %} 

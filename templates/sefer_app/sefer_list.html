@@ -1,0 +1,282 @@
+{% extends 'sefer_app/base.html' %}
+
+{% block title %}Seferler - Sefer ve Finans Yönetim Sistemi{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .select2-container--default .select2-selection--single {
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.5;
+        border: 1px solid #d1d3e2;
+        border-radius: 0.35rem;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 38px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: normal;
+    }
+</style>
+{% endblock %}
+
+{% block page_title %}Seferler{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sayfa Başlığı -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Seferler</h1>
+        <div>
+            <a href="{% url 'masraf_list' %}" class="btn btn-sm btn-info shadow-sm me-2">
+                <i class="fas fa-money-bill-wave fa-sm text-white-50 me-1"></i> Masraflar
+            </a>
+            <a href="{% url 'sefer_create' %}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-plus fa-sm text-white-50 me-1"></i> Yeni Sefer Ekle
+        </a>
+        </div>
+    </div>
+    
+    <!-- Genel Bilgi Bandı -->
+    <div class="card shadow mb-4">
+        <div class="card-body p-0">
+            <div class="row g-0">
+                <div class="col-md-2 bg-light p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-truck-moving text-primary mb-2" style="font-size: 2rem;"></i>
+                    <h5 class="mb-0">{{ toplam_sefer_sayisi }}</h5>
+                    <p class="text-muted small mb-0">Toplam Sefer</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-route text-warning mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ aktif_seferler_sayisi }}</h6>
+                    <p class="text-muted small mb-0">Devam Eden</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-flag-checkered text-success mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ tamamlanan_seferler_sayisi }}</h6>
+                    <p class="text-muted small mb-0">Tamamlanan</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-ban text-danger mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ iptal_edilen_seferler_sayisi }}</h6>
+                    <p class="text-muted small mb-0">İptal Edilen</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center border-end">
+                    <i class="fas fa-road text-info mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ toplam_km|floatformat:0 }} km</h6>
+                    <p class="text-muted small mb-0">Toplam Mesafe</p>
+                </div>
+                <div class="col-md-2 p-3 d-flex flex-column align-items-center justify-content-center">
+                    <i class="fas fa-money-bill-wave text-success mb-2" style="font-size: 1.5rem;"></i>
+                    <h6 class="mb-0">{{ toplam_kar|floatformat:2 }} EUR</h6>
+                    <p class="text-muted small mb-0">Toplam Kar</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Filtreleme ve Arama -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Sefer Filtrele</h6>
+            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
+        <div class="collapse" id="filterCollapse">
+        <div class="card-body">
+            <form method="get" class="mb-0">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label for="durum" class="form-label">Durum</label>
+                        <select name="durum" id="durum" class="form-select select2">
+                            <option value="">Tümü</option>
+                            <option value="Aktif" {% if durum_filtre == 'Aktif' %}selected{% endif %}>Aktif</option>
+                            <option value="Tamamlandı" {% if durum_filtre == 'Tamamlandı' %}selected{% endif %}>Tamamlandı</option>
+                            <option value="İptal Edildi" {% if durum_filtre == 'İptal Edildi' %}selected{% endif %}>İptal Edildi</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="firma" class="form-label">Firma</label>
+                        <select name="firma" id="firma" class="form-select select2">
+                            <option value="">Tümü</option>
+                            {% for firma in firmalar %}
+                            <option value="{{ firma.id }}" {% if firma_filtre == firma.id|stringformat:"s" %}selected{% endif %}>{{ firma.FirmaAdi }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="personel" class="form-label">Personel</label>
+                        <select name="personel" id="personel" class="form-select select2">
+                            <option value="">Tümü</option>
+                            {% for personel in personeller %}
+                            <option value="{{ personel.id }}" {% if personel_filtre == personel.id|stringformat:"s" %}selected{% endif %}>{{ personel.PerAd }} {{ personel.PerSoyad }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="arac" class="form-label">Araç</label>
+                        <select name="arac" id="arac" class="form-select select2">
+                            <option value="">Tümü</option>
+                            {% for arac in araclar %}
+                            <option value="{{ arac.id }}" {% if arac_filtre == arac.id|stringformat:"s" %}selected{% endif %}>{{ arac.plaka }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label for="baslangic_tarihi" class="form-label">Başlangıç Tarihi</label>
+                        <input type="text" name="baslangic_tarihi" id="baslangic_tarihi" class="form-control datepicker" value="{{ baslangic_tarihi_filtre }}">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="bitis_tarihi" class="form-label">Bitiş Tarihi</label>
+                        <input type="text" name="bitis_tarihi" id="bitis_tarihi" class="form-control datepicker" value="{{ bitis_tarihi_filtre }}">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="arama" class="form-label">Arama</label>
+                        <input type="text" name="arama" id="arama" class="form-control" placeholder="Rota, açıklama veya sefer kodu..." value="{{ arama_filtre }}">
+                    </div>
+                    <div class="col-md-3 mb-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search fa-sm"></i> Filtrele
+                        </button>
+                    </div>
+                </div>
+            </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Seferler Tablosu -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Seferler Listesi</h6>
+            <div>
+                <a href="{% url 'sefer_list' %}?export=excel{% if baslangic_tarihi_filtre %}&baslangic_tarihi={{ baslangic_tarihi_filtre }}{% endif %}{% if bitis_tarihi_filtre %}&bitis_tarihi={{ bitis_tarihi_filtre }}{% endif %}{% if durum_filtre %}&durum={{ durum_filtre }}{% endif %}{% if firma_filtre %}&firma={{ firma_filtre }}{% endif %}{% if personel_filtre %}&personel={{ personel_filtre }}{% endif %}{% if arac_filtre %}&arac={{ arac_filtre }}{% endif %}{% if arama_filtre %}&arama={{ arama_filtre }}{% endif %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-file-excel fa-sm"></i> Excel
+                </a>
+                <a href="{% url 'sefer_list' %}?export=pdf{% if baslangic_tarihi_filtre %}&baslangic_tarihi={{ baslangic_tarihi_filtre }}{% endif %}{% if bitis_tarihi_filtre %}&bitis_tarihi={{ bitis_tarihi_filtre }}{% endif %}{% if durum_filtre %}&durum={{ durum_filtre }}{% endif %}{% if firma_filtre %}&firma={{ firma_filtre }}{% endif %}{% if personel_filtre %}&personel={{ personel_filtre }}{% endif %}{% if arac_filtre %}&arac={{ arac_filtre }}{% endif %}{% if arama_filtre %}&arama={{ arama_filtre }}{% endif %}" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-file-pdf fa-sm"></i> PDF
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="seferlerTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Sefer Kodu</th>
+                            <th>Firma</th>
+                            <th>Başlangıç</th>
+                            <th>Varış</th>
+                            <th>Çıkış Tarihi</th>
+                            <th>Varış Tarihi</th>
+                            <th>Araç</th>
+                            <th>Sürücü</th>
+                            <th>Durum</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if seferler %}
+                        {% for sefer in seferler %}
+                        <tr {% if sefer.durum == 'Tamamlandı' %}class="opacity-50"{% endif %}>
+                            <td>
+                                <a href="{% url 'sefer_detail' sefer.id %}" class="fw-bold text-primary">
+                                    {{ sefer.sefer_kodu }}
+                                </a>
+                            </td>
+                            <td>
+                                <a href="{% url 'firma_detail' sefer.firma.id %}" class="text-primary">
+                                    {{ sefer.firma.FirmaAdi }}
+                                </a>
+                            </td>
+                            <td>{{ sefer.baslangic_sehri.sehir_adi }}, {{ sefer.baslangic_ulkesi.ulke_kodu }}</td>
+                            <td>{{ sefer.bitis_sehri.sehir_adi }}, {{ sefer.bitis_ulkesi.ulke_kodu }}</td>
+                            <td>{{ sefer.cikis_tarihi|date:"d.m.Y" }}</td>
+                            <td>{{ sefer.tahmini_varis_tarihi|date:"d.m.Y"|default:"-" }}</td>
+                            <td>{{ sefer.arac.plaka }}</td>
+                            <td>{{ sefer.personel.PerAd }} {{ sefer.personel.PerSoyad }}</td>
+                            <td>
+                                <span class="badge {% if sefer.durum == 'Aktif' %}bg-success{% elif sefer.durum == 'Tamamlandı' %}bg-info{% else %}bg-danger{% endif %} text-white">
+                                    {{ sefer.durum }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group">
+                                    <a href="{% url 'sefer_detail' sefer.id %}" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                    <a href="{% url 'sefer_update' sefer.id %}" class="btn btn-sm btn-info">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{% url 'sefer_delete' sefer.id %}" class="btn btn-sm btn-danger">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center py-4">
+                                <div class="alert alert-info mb-0">
+                                    <i class="fas fa-info-circle me-2"></i> Kayıtlı sefer bulunamadı.
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    $(document).ready(function() {
+        // DataTable başlatma
+        var table = $('#seferlerTable').DataTable({
+            language: {
+                url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/tr.json"
+            },
+            order: [[5, 'desc']], // Çıkış tarihine göre sırala (en yeni üstte)
+            pageLength: 25,
+            responsive: true
+        });
+        
+        // Select2 için basit yapılandırma
+        $('.select2').select2({
+            width: '100%',
+            placeholder: "Seçin..."
+        });
+        
+        // Flatpickr için yapılandırma
+        $(".datepicker").flatpickr({
+            dateFormat: "Y-m-d",
+            locale: {
+                firstDayOfWeek: 1,
+                weekdays: {
+                    shorthand: ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct'],
+                    longhand: ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+                },
+                months: {
+                    shorthand: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
+                    longhand: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+                }
+            }
+        });
+    });
+</script>
+{% endblock %} 

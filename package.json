@@ -1,0 +1,71 @@
+{
+  "name": "nextsefer-electron",
+  "version": "1.0.0",
+  "description": "NextSefer Electron Application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "postinstall": "electron-builder install-app-deps",
+    "publish": "electron-builder --publish always"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "png-to-ico": "2.1.8"
+  },
+  "dependencies": {
+    "electron-is-dev": "^2.0.0",
+    "electron-updater": "^6.1.7",
+    "find-process": "^1.4.7",
+    "ps-node": "^0.1.6",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.nextsefer.app",
+    "productName": "NextSefer",
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "installer.nsh"
+    },
+    "extraResources": [
+      {
+        "from": "python_dist",
+        "to": "python_dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      "icon.ico"
+    ],
+    "files": [
+      "**/*",
+      "!python_dist{,/**/*}"
+    ],
+    "asarUnpack": [
+      "**/*.ico"
+    ],
+    "directories": {
+      "buildResources": "resources",
+      "output": "dist"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YOUR_ACTUAL_GITHUB_USERNAME",
+        "repo": "nextsefer"
+      }
+    ]
+  }
+}
