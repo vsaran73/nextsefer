@@ -27,7 +27,8 @@ SECRET_KEY = 'django-insecure-%r_fs%z)4sy^36f2+!u0i#&a_a#83r(%-l31j$ka-55uww!fy#
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']  # Tüm IP adreslerine izin ver
+ALLOWED_HOSTS = ['vsaran73.pythonanywhere.com']
+  # Tüm IP adreslerine izin ver
 
 # Uygulama versiyonu
 APP_VERSION = '1.0.0'
